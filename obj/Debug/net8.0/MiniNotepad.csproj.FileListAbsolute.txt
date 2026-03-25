@@ -1,0 +1,15 @@
+/home/emir/Projects/GitHub/Prolab-2/bin/Debug/net8.0/main
+/home/emir/Projects/GitHub/Prolab-2/bin/Debug/net8.0/main.deps.json
+/home/emir/Projects/GitHub/Prolab-2/bin/Debug/net8.0/main.runtimeconfig.json
+/home/emir/Projects/GitHub/Prolab-2/bin/Debug/net8.0/main.dll
+/home/emir/Projects/GitHub/Prolab-2/bin/Debug/net8.0/main.pdb
+/home/emir/Projects/GitHub/Prolab-2/obj/Debug/net8.0/MiniNotepad.GeneratedMSBuildEditorConfig.editorconfig
+/home/emir/Projects/GitHub/Prolab-2/obj/Debug/net8.0/MiniNotepad.AssemblyInfoInputs.cache
+/home/emir/Projects/GitHub/Prolab-2/obj/Debug/net8.0/MiniNotepad.AssemblyInfo.cs
+/home/emir/Projects/GitHub/Prolab-2/obj/Debug/net8.0/MiniNotepad.csproj.CoreCompileInputs.cache
+/home/emir/Projects/GitHub/Prolab-2/obj/Debug/net8.0/MiniNotepad.sourcelink.json
+/home/emir/Projects/GitHub/Prolab-2/obj/Debug/net8.0/main.dll
+/home/emir/Projects/GitHub/Prolab-2/obj/Debug/net8.0/refint/main.dll
+/home/emir/Projects/GitHub/Prolab-2/obj/Debug/net8.0/main.pdb
+/home/emir/Projects/GitHub/Prolab-2/obj/Debug/net8.0/MiniNotepad.genruntimeconfig.cache
+/home/emir/Projects/GitHub/Prolab-2/obj/Debug/net8.0/ref/main.dll
