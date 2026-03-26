@@ -1,4 +1,5 @@
 using System.Text;
+using System.Runtime.InteropServices;
 using MiniNotepad.Core;
 using MiniNotepad.UI;
 using MiniNotepad.IO;
@@ -7,11 +8,36 @@ namespace MiniNotepad;
 
 class Program
 {
+    // Windows terminal ayarlarını değiştirmek için Win32 API
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr GetStdHandle(int nStdHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+    const int STD_INPUT_HANDLE = -10;
+    const uint ENABLE_PROCESSED_INPUT = 0x0001;
+
     static void Main(string[] args)
     {
-        // UTF-8 desteği
+        // Windows'ta CTRL+S gibi tuşların terminal tarafından yutulmasını engelle
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            IntPtr hIn = GetStdHandle(STD_INPUT_HANDLE);
+            if (GetConsoleMode(hIn, out uint mode))
+            {
+                // ENABLE_PROCESSED_INPUT bayrağını kapatırsak CTRL+S uygulamaya gelir
+                SetConsoleMode(hIn, mode & ~ENABLE_PROCESSED_INPUT);
+            }
+        }
+
         Console.OutputEncoding = Encoding.UTF8;
+        Console.InputEncoding = Encoding.UTF8;
         Console.CursorVisible = true;
+        Console.TreatControlCAsInput = true;
 
         var buffer = new EditorBuffer();
         var cursor = new EditorCursor();
@@ -24,82 +50,95 @@ class Program
         {
             var keyInfo = Console.ReadKey(true);
 
-            // Control tuşu kombinasyonları
-            if (keyInfo.Modifiers.HasFlag(ConsoleModifiers.Control))
+            // Hem ConsoleKey hem de ASCII 19 (CTRL+S) kontrolü yapıyoruz
+            bool isCtrlS = (keyInfo.Modifiers.HasFlag(ConsoleModifiers.Control) && keyInfo.Key == ConsoleKey.S) || 
+                           (keyInfo.KeyChar == (char)19);
+
+            if (keyInfo.Modifiers.HasFlag(ConsoleModifiers.Control) || isCtrlS)
             {
                 try
                 {
-                    switch (keyInfo.Key)
+                    // CTRL+S ise Kaydet
+                    if (isCtrlS)
                     {
-                        case ConsoleKey.O: // Aç
-                            var openPath = FileExplorer.Explore("Dosya Aç");
-                            if (!string.IsNullOrWhiteSpace(openPath))
-                            {
-                                var lines = FileExplorer.Open(openPath);
-                                buffer.Load(lines, openPath);
-                                cursor.X = 0;
-                                cursor.Y = 0;
-                            }
-                            break;
-                        case ConsoleKey.S: // Kaydet
-                            if (string.IsNullOrEmpty(buffer.CurrentFilePath))
-                            {
-                                goto case ConsoleKey.A;
-                            }
-                            else
-                            {
-                                // Proje isterine göre her durumda gezgin açılabilir veya direkt kaydedilebilir.
-                                // Burada kullanıcıya kolaylık olması için varsayılan olarak mevcut yolu veriyoruz.
-                                string? savePath = FileExplorer.Explore("Dosya Kaydet", Path.GetDirectoryName(buffer.CurrentFilePath), Path.GetFileName(buffer.CurrentFilePath));
-                                if (!string.IsNullOrWhiteSpace(savePath))
-                                {
-                                    FileExplorer.Save(savePath, buffer.GetLines());
-                                    buffer.CurrentFilePath = savePath;
-                                    buffer.IsModified = false;
-                                }
-                            }
-                            break;
-                        case ConsoleKey.A: // Farklı Kaydet
-                            var saveAsPath = FileExplorer.Explore("Farklı Kaydet", 
-                                buffer.CurrentFilePath != null ? Path.GetDirectoryName(buffer.CurrentFilePath) : null,
-                                buffer.CurrentFilePath != null ? Path.GetFileName(buffer.CurrentFilePath) : null);
+                        if (string.IsNullOrEmpty(buffer.CurrentFilePath))
+                        {
+                            var saveAsPath = FileExplorer.Explore("Farklı Kaydet", null, null);
                             if (!string.IsNullOrWhiteSpace(saveAsPath))
                             {
                                 FileExplorer.Save(saveAsPath, buffer.GetLines());
                                 buffer.CurrentFilePath = saveAsPath;
                                 buffer.IsModified = false;
                             }
-                            break;
-                        case ConsoleKey.Z: // Geri Al
-                            buffer.Undo(cursor);
-                            break;
-                        case ConsoleKey.F: // Bul
-                            Console.SetCursorPosition(0, Console.WindowHeight - 1);
-                            Console.Write("Aranacak metin: ");
-                            string? searchTerm = Console.ReadLine();
-                            if (!string.IsNullOrEmpty(searchTerm))
+                        }
+                        else
+                        {
+                            // İster: "“Dosya Kaydet” seçeneğinde dosya daha önce kaydedilmişse dosya yöneticisi açılacaktır"
+                            // Bu yüzden mevcut yol olsa bile Explore'u açıyoruz
+                            string? savePath = FileExplorer.Explore("Dosya Kaydet", Path.GetDirectoryName(buffer.CurrentFilePath), Path.GetFileName(buffer.CurrentFilePath));
+                            if (!string.IsNullOrWhiteSpace(savePath))
                             {
-                                // Basit arama: ilk eşleşmeyi bul
-                                bool found = false;
-                                for (int i = 0; i < buffer.Lines.Count; i++)
+                                FileExplorer.Save(savePath, buffer.GetLines());
+                                buffer.CurrentFilePath = savePath;
+                                buffer.IsModified = false;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        switch (keyInfo.Key)
+                        {
+                            case ConsoleKey.O: // Aç
+                                var openPath = FileExplorer.Explore("Dosya Aç");
+                                if (!string.IsNullOrWhiteSpace(openPath))
                                 {
-                                    int idx = buffer.Lines[i].ToString().IndexOf(searchTerm);
-                                    if (idx != -1)
+                                    var lines = FileExplorer.Open(openPath);
+                                    buffer.Load(lines, openPath);
+                                    cursor.X = 0;
+                                    cursor.Y = 0;
+                                }
+                                break;
+                            case ConsoleKey.A: // Farklı Kaydet
+                                var saveAsPath = FileExplorer.Explore("Farklı Kaydet", 
+                                    buffer.CurrentFilePath != null ? Path.GetDirectoryName(buffer.CurrentFilePath) : null,
+                                    buffer.CurrentFilePath != null ? Path.GetFileName(buffer.CurrentFilePath) : null);
+                                if (!string.IsNullOrWhiteSpace(saveAsPath))
+                                {
+                                    FileExplorer.Save(saveAsPath, buffer.GetLines());
+                                    buffer.CurrentFilePath = saveAsPath;
+                                    buffer.IsModified = false;
+                                }
+                                break;
+                            case ConsoleKey.Z: // Geri Al
+                                buffer.Undo(cursor);
+                                break;
+                            case ConsoleKey.F: // Bul
+                                Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                                Console.Write("Aranacak metin: ");
+                                string? searchTerm = Console.ReadLine();
+                                if (!string.IsNullOrEmpty(searchTerm))
+                                {
+                                    bool found = false;
+                                    for (int i = 0; i < buffer.Lines.Count; i++)
                                     {
-                                        cursor.Y = i;
-                                        cursor.X = idx;
-                                        found = true;
-                                        break;
+                                        int idx = buffer.Lines[i].ToString().IndexOf(searchTerm);
+                                        if (idx != -1)
+                                        {
+                                            cursor.Y = i;
+                                            cursor.X = idx;
+                                            found = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!found)
+                                    {
+                                        Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                                        Console.Write("Bulunamadı! (Bir tuşa basın)");
+                                        Console.ReadKey(true);
                                     }
                                 }
-                                if (!found)
-                                {
-                                    Console.SetCursorPosition(0, Console.WindowHeight - 1);
-                                    Console.Write("Bulunamadı! (Bir tuşa basın)");
-                                    Console.ReadKey(true);
-                                }
-                            }
-                            break;
+                                break;
+                        }
                     }
                 }
                 catch (Exception ex)
