@@ -11,17 +11,18 @@ public class Renderer
     public void Render(EditorBuffer buffer, EditorCursor cursor)
     {
         Console.Clear();
-        RenderToolbox();
+        RenderToolbox(buffer.CurrentFilePath);
         RenderBuffer(buffer);
         UpdateCursor(cursor);
     }
 
-    private void RenderToolbox()
+    private void RenderToolbox(string? currentPath)
     {
         Console.SetCursorPosition(0, 0);
         Console.BackgroundColor = ConsoleColor.DarkGray;
         Console.ForegroundColor = ConsoleColor.White;
-        Console.WriteLine("Dosya İşlemleri: Aç(CTRL+O) Kaydet(CTRL+S) Farklı Kaydet(CTRL+A)");
+        string fileName = currentPath != null ? Path.GetFileName(currentPath) : "Yeni Dosya";
+        Console.WriteLine($"[ {fileName} ] Dosya: Aç(CTRL+O) Kaydet(CTRL+S) Farklı Kaydet(CTRL+A)");
         Console.WriteLine("Düzenle: Bul(CTRL+F) Değiştir(CTRL+H) Geri Al(CTRL+Z) Kopyala(CTRL+C)");
         Console.ResetColor();
     }

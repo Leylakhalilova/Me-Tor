@@ -6,6 +6,32 @@ public class EditorBuffer
 {
     public List<StringBuilder> Lines { get; private set; } = new() { new StringBuilder() };
     public bool IsModified { get; set; } = false;
+    public string? CurrentFilePath { get; set; }
+
+    public void Load(IEnumerable<string> content, string? path)
+    {
+        Lines.Clear();
+        foreach (var line in content)
+        {
+            Lines.Add(new StringBuilder(line));
+        }
+        if (Lines.Count == 0) Lines.Add(new StringBuilder());
+        CurrentFilePath = path;
+        IsModified = false;
+    }
+
+    public List<string> GetLines()
+    {
+        return Lines.Select(sb => sb.ToString()).ToList();
+    }
+
+    public void Clear()
+    {
+        Lines.Clear();
+        Lines.Add(new StringBuilder());
+        CurrentFilePath = null;
+        IsModified = false;
+    }
 
     public void InsertChar(int x, int y, char c)
     {
