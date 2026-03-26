@@ -32,7 +32,7 @@ class Program
                     switch (keyInfo.Key)
                     {
                         case ConsoleKey.O: // Aç
-                            var openPath = FileExplorer.PromptForPath("Açılacak dosya yolu");
+                            var openPath = FileExplorer.Explore("Dosya Aç");
                             if (!string.IsNullOrWhiteSpace(openPath))
                             {
                                 var lines = FileExplorer.Open(openPath);
@@ -48,12 +48,20 @@ class Program
                             }
                             else
                             {
-                                FileExplorer.Save(buffer.CurrentFilePath, buffer.GetLines());
-                                buffer.IsModified = false;
+                                // İster: "“Dosya Kaydet” seçeneğinde dosya daha önce kaydedilmişse dosya yöneticisi açılacaktır"
+                                string? savePath = FileExplorer.Explore("Dosya Kaydet", Path.GetDirectoryName(buffer.CurrentFilePath), Path.GetFileName(buffer.CurrentFilePath));
+                                if (!string.IsNullOrWhiteSpace(savePath))
+                                {
+                                    FileExplorer.Save(savePath, buffer.GetLines());
+                                    buffer.CurrentFilePath = savePath;
+                                    buffer.IsModified = false;
+                                }
                             }
                             break;
                         case ConsoleKey.A: // Farklı Kaydet
-                            var saveAsPath = FileExplorer.PromptForPath("Kaydedilecek dosya yolu");
+                            var saveAsPath = FileExplorer.Explore("Farklı Kaydet", 
+                                buffer.CurrentFilePath != null ? Path.GetDirectoryName(buffer.CurrentFilePath) : null,
+                                buffer.CurrentFilePath != null ? Path.GetFileName(buffer.CurrentFilePath) : null);
                             if (!string.IsNullOrWhiteSpace(saveAsPath))
                             {
                                 FileExplorer.Save(saveAsPath, buffer.GetLines());
@@ -121,12 +129,13 @@ class Program
                                 {
                                     if (string.IsNullOrEmpty(buffer.CurrentFilePath))
                                     {
-                                        var path = FileExplorer.PromptForPath("Kaydedilecek dosya yolu");
+                                        var path = FileExplorer.Explore("Kapanış Öncesi Kaydet");
                                         if (!string.IsNullOrWhiteSpace(path))
                                             FileExplorer.Save(path, buffer.GetLines());
                                     }
                                     else
                                     {
+                                        // Mevcut dosyaya kaydet
                                         FileExplorer.Save(buffer.CurrentFilePath, buffer.GetLines());
                                     }
                                 }
