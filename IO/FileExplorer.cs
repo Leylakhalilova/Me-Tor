@@ -4,6 +4,8 @@ namespace MiniNotepad.IO;
 
 public static class FileExplorer
 {
+    private static readonly char[] IllegalChars = { '<', '>', ':', '"', '/', '\\', '|', '?', '*' };
+
     public static string[] Open(string path)
     {
         if (Directory.Exists(path))
@@ -20,12 +22,23 @@ public static class FileExplorer
         if (Directory.Exists(path))
             throw new IOException("Belirtilen yol bir klasördür, dosya değil.");
 
+        // Dosya adı geçerliliğini kontrol et
+        string? fileName = Path.GetFileName(path);
+        if (!string.IsNullOrEmpty(fileName) && fileName.Any(c => IllegalChars.Contains(c)))
+        {
+             // Drive letter check (e.g. C:) - on Windows Path.GetFileName might return it if it's just 'C:'
+             if (!(path.Length == 2 && path[1] == ':'))
+                throw new IOException("Dosya adı geçersiz karakterler içeriyor.");
+        }
+
         File.WriteAllLines(path, content);
     }
 
     public static string? Explore(string title, string? initialPath = null, string? defaultFileName = null)
     {
-        string currentDir;
+        string currentDir = "";
+        bool showingDrives = false;
+        
         if (string.IsNullOrWhiteSpace(initialPath))
         {
             currentDir = Directory.GetCurrentDirectory();
@@ -54,22 +67,38 @@ public static class FileExplorer
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine($"=== {title.ToUpper()} ===");
             Console.ResetColor();
-            Console.WriteLine($"Mevcut Dizin: {currentDir}");
+            
+            if (showingDrives)
+                Console.WriteLine("Mevcut Dizin: Sürücü Seçimi");
+            else
+                Console.WriteLine($"Mevcut Dizin: {currentDir}");
+                
             Console.WriteLine(new string('-', Console.WindowWidth));
 
             List<FileSystemInfo> entries = new List<FileSystemInfo>();
-            try
+            List<DriveInfo> drives = new List<DriveInfo>();
+
+            if (showingDrives)
             {
-                var dirInfo = new DirectoryInfo(currentDir);
-                entries.AddRange(dirInfo.GetDirectories().OrderBy(d => d.Name));
-                entries.AddRange(dirInfo.GetFiles().OrderBy(f => f.Name));
+                drives.AddRange(DriveInfo.GetDrives().Where(d => d.IsReady));
             }
-            catch (Exception ex)
+            else
             {
-                Console.WriteLine($"Hata: {ex.Message}");
+                try
+                {
+                    var dirInfo = new DirectoryInfo(currentDir);
+                    entries.AddRange(dirInfo.GetDirectories().OrderBy(d => d.Name));
+                    entries.AddRange(dirInfo.GetFiles().OrderBy(f => f.Name));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Hata: {ex.Message}");
+                }
             }
 
-            if (entries.Count == 0)
+            int totalCount = showingDrives ? drives.Count : entries.Count;
+
+            if (totalCount == 0 && !showingDrives)
             {
                 Console.WriteLine(" (Dizin boş) ");
             }
@@ -77,13 +106,13 @@ public static class FileExplorer
             {
                 // selectedIndex sınırlarını koru
                 if (selectedIndex < 0) selectedIndex = 0;
-                if (entries.Count > 0 && selectedIndex >= entries.Count) selectedIndex = entries.Count - 1;
+                if (totalCount > 0 && selectedIndex >= totalCount) selectedIndex = totalCount - 1;
 
                 // Scroll ayarı
                 if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
                 if (selectedIndex >= scrollOffset + maxLines) scrollOffset = selectedIndex - maxLines + 1;
 
-                for (int i = scrollOffset; i < Math.Min(scrollOffset + maxLines, entries.Count); i++)
+                for (int i = scrollOffset; i < Math.Min(scrollOffset + maxLines, totalCount); i++)
                 {
                     if (i == selectedIndex)
                     {
@@ -96,8 +125,15 @@ public static class FileExplorer
                         Console.Write("   ");
                     }
 
-                    string type = entries[i] is DirectoryInfo ? "[Klasör]" : "[Dosya] ";
-                    Console.WriteLine($"{type} {entries[i].Name}");
+                    if (showingDrives)
+                    {
+                        Console.WriteLine($"[Sürücü] {drives[i].Name} ({drives[i].VolumeLabel})");
+                    }
+                    else
+                    {
+                        string type = entries[i] is DirectoryInfo ? "[Klasör]" : "[Dosya] ";
+                        Console.WriteLine($"{type} {entries[i].Name}");
+                    }
                     Console.ResetColor();
                 }
             }
@@ -113,38 +149,67 @@ public static class FileExplorer
 
             if (keyInfo.Key == ConsoleKey.Enter)
             {
-                string fileName = inputBuffer.ToString().Trim();
+                string input = inputBuffer.ToString().Trim();
                 
                 // Eğer isim yazılmamışsa ama bir şey seçiliyse
-                if (string.IsNullOrEmpty(fileName) && entries.Count > 0)
+                if (string.IsNullOrEmpty(input))
                 {
-                    var selected = entries[selectedIndex];
-                    if (selected is DirectoryInfo)
+                    if (showingDrives && drives.Count > 0)
                     {
-                        currentDir = selected.FullName;
+                        currentDir = drives[selectedIndex].Name;
+                        showingDrives = false;
                         selectedIndex = 0;
                         scrollOffset = 0;
-                        inputBuffer.Clear();
                         continue;
                     }
-                    else
+                    else if (entries.Count > 0)
                     {
-                        return selected.FullName;
+                        var selected = entries[selectedIndex];
+                        if (selected is DirectoryInfo)
+                        {
+                            currentDir = selected.FullName;
+                            selectedIndex = 0;
+                            scrollOffset = 0;
+                            inputBuffer.Clear();
+                            continue;
+                        }
+                        else
+                        {
+                            return selected.FullName;
+                        }
                     }
                 }
                 
-                if (!string.IsNullOrEmpty(fileName))
+                if (!string.IsNullOrEmpty(input))
                 {
-                    string fullPath = Path.Combine(currentDir, fileName);
+                    // absolute path check
+                    string fullPath;
+                    if (Path.IsPathRooted(input))
+                    {
+                        fullPath = input;
+                    }
+                    else
+                    {
+                        fullPath = Path.Combine(currentDir, input);
+                    }
+
                     if (Directory.Exists(fullPath))
                     {
                         currentDir = fullPath;
                         inputBuffer.Clear();
                         selectedIndex = 0;
                         scrollOffset = 0;
+                        showingDrives = false;
                     }
                     else
                     {
+                        // Geçersiz karakter kontrolü (sadece dosya kısmı için)
+                        string? fName = Path.GetFileName(fullPath);
+                        if (!string.IsNullOrEmpty(fName) && fName.Any(c => IllegalChars.Contains(c)))
+                        {
+                            // ignore for now or show error?
+                            continue; 
+                        }
                         return fullPath;
                     }
                 }
@@ -155,11 +220,18 @@ public static class FileExplorer
             }
             else if (keyInfo.Key == ConsoleKey.DownArrow)
             {
-                if (selectedIndex < entries.Count - 1) selectedIndex++;
+                if (selectedIndex < totalCount - 1) selectedIndex++;
             }
             else if (keyInfo.Key == ConsoleKey.RightArrow) // İleri
             {
-                if (entries.Count > 0)
+                if (showingDrives)
+                {
+                    currentDir = drives[selectedIndex].Name;
+                    showingDrives = false;
+                    selectedIndex = 0;
+                    scrollOffset = 0;
+                }
+                else if (entries.Count > 0)
                 {
                     var selected = entries[selectedIndex];
                     if (selected is DirectoryInfo)
@@ -177,10 +249,19 @@ public static class FileExplorer
             }
             else if (keyInfo.Key == ConsoleKey.LeftArrow) // Geri
             {
+                if (showingDrives) continue;
+
                 var parent = Directory.GetParent(currentDir);
                 if (parent != null)
                 {
                     currentDir = parent.FullName;
+                    selectedIndex = 0;
+                    scrollOffset = 0;
+                }
+                else
+                {
+                    // Root'dayız, sürücüleri göster
+                    showingDrives = true;
                     selectedIndex = 0;
                     scrollOffset = 0;
                 }
@@ -200,8 +281,6 @@ public static class FileExplorer
         }
     }
 
-    // Eski metodu silebiliriz veya geriye dönük uyumluluk için bırakabiliriz. 
-    // Ama Explore varken PromptForPath'e gerek yok.
     public static string? PromptForPath(string message)
     {
         return Explore(message);

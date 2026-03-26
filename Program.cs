@@ -48,7 +48,8 @@ class Program
                             }
                             else
                             {
-                                // İster: "“Dosya Kaydet” seçeneğinde dosya daha önce kaydedilmişse dosya yöneticisi açılacaktır"
+                                // Proje isterine göre her durumda gezgin açılabilir veya direkt kaydedilebilir.
+                                // Burada kullanıcıya kolaylık olması için varsayılan olarak mevcut yolu veriyoruz.
                                 string? savePath = FileExplorer.Explore("Dosya Kaydet", Path.GetDirectoryName(buffer.CurrentFilePath), Path.GetFileName(buffer.CurrentFilePath));
                                 if (!string.IsNullOrWhiteSpace(savePath))
                                 {
@@ -69,6 +70,36 @@ class Program
                                 buffer.IsModified = false;
                             }
                             break;
+                        case ConsoleKey.Z: // Geri Al
+                            buffer.Undo(cursor);
+                            break;
+                        case ConsoleKey.F: // Bul
+                            Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                            Console.Write("Aranacak metin: ");
+                            string? searchTerm = Console.ReadLine();
+                            if (!string.IsNullOrEmpty(searchTerm))
+                            {
+                                // Basit arama: ilk eşleşmeyi bul
+                                bool found = false;
+                                for (int i = 0; i < buffer.Lines.Count; i++)
+                                {
+                                    int idx = buffer.Lines[i].ToString().IndexOf(searchTerm);
+                                    if (idx != -1)
+                                    {
+                                        cursor.Y = i;
+                                        cursor.X = idx;
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                                if (!found)
+                                {
+                                    Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                                    Console.Write("Bulunamadı! (Bir tuşa basın)");
+                                    Console.ReadKey(true);
+                                }
+                            }
+                            break;
                     }
                 }
                 catch (Exception ex)
@@ -76,7 +107,7 @@ class Program
                     Console.SetCursorPosition(0, Console.WindowHeight - 1);
                     Console.BackgroundColor = ConsoleColor.Red;
                     Console.ForegroundColor = ConsoleColor.White;
-                    Console.Write($"HATA: {ex.Message} (Devam etmek için bir tuşa basın)");
+                    Console.Write($"HATA: {ex.Message.PadRight(Console.WindowWidth - 10)}");
                     Console.ResetColor();
                     Console.ReadKey(true);
                 }
@@ -87,16 +118,22 @@ class Program
                 switch (keyInfo.Key)
                 {
                     case ConsoleKey.UpArrow:
-                        cursor.Move(0, -1, buffer.Lines.Count, buffer.Lines[Math.Max(0, cursor.Y - 1)].Length);
+                        cursor.Move(0, -1, buffer.Lines);
                         break;
                     case ConsoleKey.DownArrow:
-                        cursor.Move(0, 1, buffer.Lines.Count, buffer.Lines[Math.Min(buffer.Lines.Count - 1, cursor.Y + 1)].Length);
+                        cursor.Move(0, 1, buffer.Lines);
                         break;
                     case ConsoleKey.LeftArrow:
-                        cursor.Move(-1, 0, buffer.Lines.Count, buffer.Lines[cursor.Y].Length);
+                        cursor.Move(-1, 0, buffer.Lines);
                         break;
                     case ConsoleKey.RightArrow:
-                        cursor.Move(1, 0, buffer.Lines.Count, buffer.Lines[cursor.Y].Length);
+                        cursor.Move(1, 0, buffer.Lines);
+                        break;
+                    case ConsoleKey.Home:
+                        cursor.X = 0;
+                        break;
+                    case ConsoleKey.End:
+                        cursor.X = buffer.Lines[cursor.Y].Length;
                         break;
                     case ConsoleKey.Enter:
                         buffer.NewLine(cursor.X, cursor.Y);
@@ -104,18 +141,24 @@ class Program
                         cursor.Y++;
                         break;
                     case ConsoleKey.Backspace:
-                        if (cursor.X > 0)
+                        if (cursor.X > 0 || cursor.Y > 0)
                         {
-                            buffer.DeleteChar(cursor.X, cursor.Y);
-                            cursor.X--;
+                            int oldX = cursor.X;
+                            int oldY = cursor.Y;
+                            if (cursor.X == 0)
+                            {
+                                cursor.Y--;
+                                cursor.X = buffer.Lines[cursor.Y].Length;
+                            }
+                            else
+                            {
+                                cursor.X--;
+                            }
+                            buffer.DeleteChar(oldX, oldY);
                         }
-                        else if (cursor.Y > 0)
-                        {
-                            int prevLineLen = buffer.Lines[cursor.Y - 1].Length;
-                            buffer.DeleteChar(cursor.X, cursor.Y);
-                            cursor.Y--;
-                            cursor.X = prevLineLen;
-                        }
+                        break;
+                    case ConsoleKey.Delete:
+                        buffer.DeleteForward(cursor.X, cursor.Y);
                         break;
                     case ConsoleKey.Escape:
                         if (buffer.IsModified)
@@ -135,7 +178,6 @@ class Program
                                     }
                                     else
                                     {
-                                        // Mevcut dosyaya kaydet
                                         FileExplorer.Save(buffer.CurrentFilePath, buffer.GetLines());
                                     }
                                 }
@@ -143,7 +185,7 @@ class Program
                                 {
                                     Console.SetCursorPosition(0, Console.WindowHeight - 1);
                                     Console.BackgroundColor = ConsoleColor.Red;
-                                    Console.Write($"KAYDETME HATASI: {ex.Message} (Çıkmak için bir tuşa basın)");
+                                    Console.Write($"KAYDETME HATASI: {ex.Message}");
                                     Console.ResetColor();
                                     Console.ReadKey(true);
                                 }
