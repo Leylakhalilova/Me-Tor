@@ -38,8 +38,8 @@ class Program
                 // ENABLE_QUICK_EDIT_MODE (0x0040): Fare ile seçim yapmayı engeller (inputu durdurabilir)
                 // ENABLE_EXTENDED_FLAGS (0x0080): QuickEdit gibi flagleri değiştirmek için gereklidir
                 mode &= ~ENABLE_PROCESSED_INPUT;
-                mode &= ~0x0040; // QuickEdit OFF
-                mode |= 0x0080;  // Extended Flags ON
+                mode &= ~0x0040u; // QuickEdit OFF (uint literal eklendi)
+                mode |= 0x0080u;  // Extended Flags ON (uint literal eklendi)
                 SetConsoleMode(hIn, mode);
             }
         }
