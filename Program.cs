@@ -23,21 +23,26 @@ class Program
 
     static void Main(string[] args)
     {
+        Console.OutputEncoding = Encoding.UTF8;
+        Console.InputEncoding = Encoding.UTF8;
+        Console.CursorVisible = true;
+        Console.TreatControlCAsInput = true;
+
         // Windows'ta CTRL+S gibi tuşların terminal tarafından yutulmasını engelle
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             IntPtr hIn = GetStdHandle(STD_INPUT_HANDLE);
             if (GetConsoleMode(hIn, out uint mode))
             {
-                // ENABLE_PROCESSED_INPUT bayrağını kapatırsak CTRL+S uygulamaya gelir
-                SetConsoleMode(hIn, mode & ~ENABLE_PROCESSED_INPUT);
+                // ENABLE_PROCESSED_INPUT (0x0001): CTRL+C, CTRL+S gibi tuşların sistem tarafından işlenmesini engeller
+                // ENABLE_QUICK_EDIT_MODE (0x0040): Fare ile seçim yapmayı engeller (inputu durdurabilir)
+                // ENABLE_EXTENDED_FLAGS (0x0080): QuickEdit gibi flagleri değiştirmek için gereklidir
+                mode &= ~ENABLE_PROCESSED_INPUT;
+                mode &= ~0x0040; // QuickEdit OFF
+                mode |= 0x0080;  // Extended Flags ON
+                SetConsoleMode(hIn, mode);
             }
         }
-
-        Console.OutputEncoding = Encoding.UTF8;
-        Console.InputEncoding = Encoding.UTF8;
-        Console.CursorVisible = true;
-        Console.TreatControlCAsInput = true;
 
         var buffer = new EditorBuffer();
         var cursor = new EditorCursor();
@@ -51,10 +56,11 @@ class Program
             var keyInfo = Console.ReadKey(true);
 
             // Hem ConsoleKey hem de ASCII 19 (CTRL+S) kontrolü yapıyoruz
-            bool isCtrlS = (keyInfo.Modifiers.HasFlag(ConsoleModifiers.Control) && keyInfo.Key == ConsoleKey.S) || 
+            // Bazı Windows terminallerinde sadece KeyChar 19 gelir, bazılarında Modifiers+Key
+            bool isCtrlS = (keyInfo.Key == ConsoleKey.S && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0) || 
                            (keyInfo.KeyChar == (char)19);
 
-            if (keyInfo.Modifiers.HasFlag(ConsoleModifiers.Control) || isCtrlS)
+            if ((keyInfo.Modifiers & ConsoleModifiers.Control) != 0 || isCtrlS)
             {
                 try
                 {
