@@ -1,0 +1,10 @@
+# .gitignore
+bin/
+obj/
+*.user
+*.suo
+*.sln.docstates
+.vs/
+.vscode/
+.idea/
+.~lock.*
