@@ -59,8 +59,10 @@ class Program
             // Bazı Windows terminallerinde sadece KeyChar 19 gelir, bazılarında Modifiers+Key
             bool isCtrlS = (keyInfo.Key == ConsoleKey.S && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0) || 
                            (keyInfo.KeyChar == (char)19);
+            bool isCtrlZ = (keyInfo.Key == ConsoleKey.Z && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0) || 
+                           (keyInfo.KeyChar == (char)26);
 
-            if ((keyInfo.Modifiers & ConsoleModifiers.Control) != 0 || isCtrlS)
+            if ((keyInfo.Modifiers & ConsoleModifiers.Control) != 0 || isCtrlS || isCtrlZ)
             {
                 try
                 {
@@ -89,6 +91,10 @@ class Program
                                 buffer.IsModified = false;
                             }
                         }
+                    }
+                    else if (isCtrlZ)
+                    {
+                        buffer.Undo(cursor);
                     }
                     else
                     {
@@ -143,6 +149,9 @@ class Program
                                         Console.ReadKey(true);
                                     }
                                 }
+                                break;
+                            case ConsoleKey.Backspace:
+                                buffer.DeleteWord(cursor);
                                 break;
                         }
                     }
@@ -241,6 +250,13 @@ class Program
                     default:
                         if (!char.IsControl(keyInfo.KeyChar))
                         {
+                            int viewWidth = Console.WindowWidth - 7; // LineNumberWidth(4) + " | "(3)
+                            if (cursor.X >= viewWidth)
+                            {
+                                buffer.NewLine(cursor.X, cursor.Y);
+                                cursor.X = 0;
+                                cursor.Y++;
+                            }
                             buffer.InsertChar(cursor.X, cursor.Y, keyInfo.KeyChar);
                             cursor.X++;
                         }

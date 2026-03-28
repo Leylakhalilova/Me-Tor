@@ -5,7 +5,7 @@ namespace MiniNotepad.UI;
 
 public class Renderer
 {
-    private const int ToolboxHeight = 2;
+    public int ToolboxHeight { get; private set; } = 2;
     private const int LineNumberWidth = 4;
     
     public int ScrollY { get; private set; } = 0;
@@ -13,6 +13,8 @@ public class Renderer
 
     public void Render(EditorBuffer buffer, EditorCursor cursor)
     {
+        // Önce toolbox yüksekliğini hesapla (UpdateScroll için gerekli)
+        CalculateToolboxHeight();
         UpdateScroll(cursor);
         Console.Clear();
         RenderToolbox(buffer.CurrentFilePath);
@@ -32,17 +34,51 @@ public class Renderer
         if (cursor.X >= ScrollX + viewWidth) ScrollX = cursor.X - viewWidth + 1;
     }
 
+    private void CalculateToolboxHeight()
+    {
+        int currentX = ("[ Yeni Dosya ] ").Length; // Tahmini max dosya adı uzunluğu
+        int currentY = 0;
+        var items = Toolbox.GetAllItems();
+        foreach (var item in items)
+        {
+            string s = $"{item.Label}({item.Shortcut}) ";
+            if (currentX + s.Length > Console.WindowWidth)
+            {
+                currentY++;
+                currentX = 0;
+            }
+            currentX += s.Length;
+        }
+        ToolboxHeight = currentY + 1;
+    }
+
     private void RenderToolbox(string? currentPath)
     {
         Console.SetCursorPosition(0, 0);
         Console.BackgroundColor = ConsoleColor.DarkGray;
         Console.ForegroundColor = ConsoleColor.White;
-        string fileName = currentPath != null ? Path.GetFileName(currentPath) : "Yeni Dosya";
-        string toolboxLine1 = $"[ {fileName} ] Dosya: Aç(CTRL+O) Kaydet(CTRL+S) Farklı Kaydet(CTRL+A)";
-        string toolboxLine2 = "Düzenle: Bul(CTRL+F) Değiştir(CTRL+H) Geri Al(CTRL+Z) Kopyala(CTRL+C)";
         
-        Console.WriteLine(toolboxLine1.PadRight(Console.WindowWidth));
-        Console.WriteLine(toolboxLine2.PadRight(Console.WindowWidth));
+        string fileName = currentPath != null ? Path.GetFileName(currentPath) : "Yeni Dosya";
+        string header = $"[ {fileName} ] ";
+        
+        var items = Toolbox.GetAllItems();
+        int currentX = header.Length;
+        
+        Console.Write(header);
+        
+        foreach (var item in items)
+        {
+            string s = $"{item.Label}({item.Shortcut}) ";
+            if (currentX + s.Length > Console.WindowWidth)
+            {
+                Console.WriteLine(new string(' ', Math.Max(0, Console.WindowWidth - currentX)));
+                currentX = 0;
+            }
+            Console.Write(s);
+            currentX += s.Length;
+        }
+        
+        Console.WriteLine(new string(' ', Math.Max(0, Console.WindowWidth - currentX)));
         Console.ResetColor();
     }
 
