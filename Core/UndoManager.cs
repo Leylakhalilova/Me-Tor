@@ -1,6 +1,6 @@
 namespace MiniNotepad.Core;
 
-public enum ActionType { InsertChar, DeleteChar, SplitLine, MergeLines, DeleteWord, ReplaceAll }
+public enum ActionType { InsertChar, DeleteChar, SplitLine, MergeLines, DeleteWord, ReplaceAll, Paste, DeleteSelection }
 
 public record EditorAction(int X, int Y, string? Text, ActionType Type, List<string>? PreviousState = null);
 

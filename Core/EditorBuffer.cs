@@ -54,13 +54,13 @@ public class EditorBuffer
         for (int i = 0; i < Lines.Count; i++)
         {
             string line = Lines[i].ToString();
-            if (line.Contains(oldText, StringComparison.OrdinalIgnoreCase))
+            string pattern = @"\b" + System.Text.RegularExpressions.Regex.Escape(oldText) + @"\b";
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
             {
-                // Simple case-insensitive replacement is tricky with StringBuilder, so we use string.Replace
-                // But we need to handle case-insensitivity as per requirement or use Regex
+                // Case-insensitive whole word replacement
                 string replacedLine = System.Text.RegularExpressions.Regex.Replace(
                     line, 
-                    System.Text.RegularExpressions.Regex.Escape(oldText), 
+                    pattern, 
                     newText, 
                     System.Text.RegularExpressions.RegexOptions.IgnoreCase
                 );
@@ -84,6 +84,121 @@ public class EditorBuffer
     public List<string> GetLines()
     {
         return Lines.Select(sb => sb.ToString()).ToList();
+    }
+
+    public string GetSelectedText(EditorCursor cursor)
+    {
+        if (!cursor.IsSelecting) return "";
+
+        int startY = cursor.SelectionStartY;
+        int startX = cursor.SelectionStartX;
+        int endY = cursor.Y;
+        int endX = cursor.X;
+
+        if (startY > endY || (startY == endY && startX > endX))
+        {
+            (startY, endY) = (endY, startY);
+            (startX, endX) = (endX, startX);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = startY; i <= endY; i++)
+        {
+            string line = Lines[i].ToString();
+            int s = (i == startY) ? startX : 0;
+            int e = (i == endY) ? endX : line.Length;
+            
+            if (e > s)
+            {
+                sb.Append(line.Substring(s, e - s));
+            }
+            if (i < endY)
+            {
+                sb.Append(Environment.NewLine);
+            }
+        }
+        return sb.ToString();
+    }
+
+    public void DeleteSelection(EditorCursor cursor)
+    {
+        if (!cursor.IsSelecting) return;
+
+        var previousState = GetLines();
+        string deletedText = GetSelectedText(cursor);
+
+        int startY = cursor.SelectionStartY;
+        int startX = cursor.SelectionStartX;
+        int endY = cursor.Y;
+        int endX = cursor.X;
+
+        if (startY > endY || (startY == endY && startX > endX))
+        {
+            (startY, endY) = (endY, startY);
+            (startX, endX) = (endX, startX);
+        }
+
+        // Perform deletion
+        if (startY == endY)
+        {
+            Lines[startY].Remove(startX, endX - startX);
+        }
+        else
+        {
+            string firstLineStart = Lines[startY].ToString().Substring(0, startX);
+            string lastLineEnd = Lines[endY].ToString().Substring(endX);
+            
+            Lines[startY] = new StringBuilder(firstLineStart + lastLineEnd);
+            
+            // Remove lines in between and the end line
+            for (int i = 0; i < (endY - startY); i++)
+            {
+                Lines.RemoveAt(startY + 1);
+            }
+        }
+
+        UndoManager.PushAction(startX, startY, deletedText, ActionType.DeleteSelection, previousState);
+        cursor.Y = startY;
+        cursor.X = startX;
+        cursor.ClearSelection();
+        IsModified = true;
+        ClearSearch();
+    }
+
+    public void InsertText(EditorCursor cursor, string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+
+        var previousState = GetLines();
+        
+        string[] newLines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+        
+        string currentLine = Lines[cursor.Y].ToString();
+        string leftPart = currentLine.Substring(0, cursor.X);
+        string rightPart = currentLine.Substring(cursor.X);
+
+        if (newLines.Length == 1)
+        {
+            Lines[cursor.Y].Insert(cursor.X, newLines[0]);
+            cursor.X += newLines[0].Length;
+        }
+        else
+        {
+            Lines[cursor.Y] = new StringBuilder(leftPart + newLines[0]);
+            for (int i = 1; i < newLines.Length - 1; i++)
+            {
+                Lines.Insert(cursor.Y + i, new StringBuilder(newLines[i]));
+            }
+            string lastPart = newLines[newLines.Length - 1] + rightPart;
+            Lines.Insert(cursor.Y + newLines.Length - 1, new StringBuilder(lastPart));
+            
+            cursor.Y += newLines.Length - 1;
+            cursor.X = newLines[newLines.Length - 1].Length;
+        }
+
+        UndoManager.PushAction(cursor.X, cursor.Y, text, ActionType.Paste, previousState);
+        IsModified = true;
+        ClearSearch();
     }
 
     public void Clear()
@@ -241,6 +356,8 @@ public class EditorBuffer
                 cursor.Y = action.Y;
                 break;
             case ActionType.ReplaceAll:
+            case ActionType.Paste:
+            case ActionType.DeleteSelection:
                 if (action.PreviousState != null)
                 {
                     Lines.Clear();
@@ -248,6 +365,8 @@ public class EditorBuffer
                     {
                         Lines.Add(new StringBuilder(line));
                     }
+                    cursor.X = action.X;
+                    cursor.Y = action.Y;
                 }
                 break;
         }

@@ -26,11 +26,16 @@ public static class SearchAlgorithms
         for (int i = 0; i < lines.Count; i++)
         {
             string line = lines[i].ToString();
-            int index = line.IndexOf(searchTerm, StringComparison.OrdinalIgnoreCase);
-            while (index != -1)
+            string pattern = @"\b" + System.Text.RegularExpressions.Regex.Escape(searchTerm) + @"\b";
+            var matchesInLine = System.Text.RegularExpressions.Regex.Matches(
+                line, 
+                pattern, 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            );
+
+            foreach (System.Text.RegularExpressions.Match match in matchesInLine)
             {
-                matches.Add(new SearchMatch(i, index, searchTerm.Length));
-                index = line.IndexOf(searchTerm, index + searchTerm.Length, StringComparison.OrdinalIgnoreCase);
+                matches.Add(new SearchMatch(i, match.Index, match.Length));
             }
         }
         return matches;
