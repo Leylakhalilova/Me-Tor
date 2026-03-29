@@ -1,4 +1,5 @@
 using System.Text;
+using MiniNotepad.Utils;
 
 namespace MiniNotepad.Core;
 
@@ -10,6 +11,11 @@ public class EditorBuffer
     
     public UndoManager UndoManager { get; } = new();
 
+    // Search results management
+    public List<SearchMatch> Matches { get; private set; } = new();
+    public int CurrentMatchIndex { get; set; } = -1;
+    public string? SearchTerm { get; set; }
+
     public void Load(IEnumerable<string> content, string? path)
     {
         Lines.Clear();
@@ -20,6 +26,59 @@ public class EditorBuffer
         if (Lines.Count == 0) Lines.Add(new StringBuilder());
         CurrentFilePath = path;
         IsModified = false;
+        ClearSearch();
+    }
+
+    public void ClearSearch()
+    {
+        Matches.Clear();
+        CurrentMatchIndex = -1;
+        SearchTerm = null;
+    }
+
+    public void UpdateSearch(string term)
+    {
+        SearchTerm = term;
+        Matches = SearchAlgorithms.FindAll(Lines, term);
+        if (Matches.Count > 0) CurrentMatchIndex = 0;
+        else CurrentMatchIndex = -1;
+    }
+
+    public void ReplaceAll(string oldText, string newText)
+    {
+        if (string.IsNullOrEmpty(oldText)) return;
+
+        var previousState = GetLines();
+        bool replaced = false;
+
+        for (int i = 0; i < Lines.Count; i++)
+        {
+            string line = Lines[i].ToString();
+            if (line.Contains(oldText, StringComparison.OrdinalIgnoreCase))
+            {
+                // Simple case-insensitive replacement is tricky with StringBuilder, so we use string.Replace
+                // But we need to handle case-insensitivity as per requirement or use Regex
+                string replacedLine = System.Text.RegularExpressions.Regex.Replace(
+                    line, 
+                    System.Text.RegularExpressions.Regex.Escape(oldText), 
+                    newText, 
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                );
+                
+                if (line != replacedLine)
+                {
+                    Lines[i] = new StringBuilder(replacedLine);
+                    replaced = true;
+                }
+            }
+        }
+
+        if (replaced)
+        {
+            UndoManager.PushAction(0, 0, null, ActionType.ReplaceAll, previousState);
+            IsModified = true;
+            ClearSearch();
+        }
     }
 
     public List<string> GetLines()
@@ -33,6 +92,7 @@ public class EditorBuffer
         Lines.Add(new StringBuilder());
         CurrentFilePath = null;
         IsModified = false;
+        ClearSearch();
     }
 
     public void InsertChar(int x, int y, char c)
@@ -40,6 +100,7 @@ public class EditorBuffer
         Lines[y].Insert(x, c);
         UndoManager.PushAction(x, y, c.ToString(), ActionType.InsertChar);
         IsModified = true;
+        ClearSearch();
     }
 
     public void DeleteChar(int x, int y)
@@ -61,6 +122,7 @@ public class EditorBuffer
             UndoManager.PushAction(prevLineLength, y - 1, null, ActionType.MergeLines);
             IsModified = true;
         }
+        ClearSearch();
     }
 
     public void DeleteForward(int x, int y)
@@ -81,6 +143,7 @@ public class EditorBuffer
             UndoManager.PushAction(x, y, null, ActionType.MergeLines);
             IsModified = true;
         }
+        ClearSearch();
     }
 
     public void DeleteWord(EditorCursor cursor)
@@ -115,9 +178,6 @@ public class EditorBuffer
             startX--;
         }
         
-        // If startX is still endX (e.g. cursor was at start of whitespace sequence), 
-        // we already decremented startX in step 1.
-        
         if (startX == endX && endX > 0)
         {
              startX = endX - 1;
@@ -128,6 +188,7 @@ public class EditorBuffer
         UndoManager.PushAction(startX, cursor.Y, deletedText, ActionType.DeleteWord);
         cursor.X = startX;
         IsModified = true;
+        ClearSearch();
     }
 
     public void NewLine(int x, int y)
@@ -140,6 +201,7 @@ public class EditorBuffer
         Lines.Insert(y + 1, new StringBuilder(rightPart));
         UndoManager.PushAction(x, y, null, ActionType.SplitLine);
         IsModified = true;
+        ClearSearch();
     }
 
     public void Undo(EditorCursor cursor)
@@ -176,9 +238,20 @@ public class EditorBuffer
                 Lines[action.Y] = new StringBuilder(left);
                 Lines.Insert(action.Y + 1, new StringBuilder(right));
                 cursor.X = action.X;
-                cursor.Y = action.Y; // Move back to where the split happened
+                cursor.Y = action.Y;
+                break;
+            case ActionType.ReplaceAll:
+                if (action.PreviousState != null)
+                {
+                    Lines.Clear();
+                    foreach (var line in action.PreviousState)
+                    {
+                        Lines.Add(new StringBuilder(line));
+                    }
+                }
                 break;
         }
         IsModified = true;
+        ClearSearch();
     }
 }

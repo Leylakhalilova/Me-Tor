@@ -85,6 +85,7 @@ public class Renderer
     private void RenderBuffer(EditorBuffer buffer)
     {
         int viewHeight = Console.WindowHeight - ToolboxHeight;
+        int viewWidth = Console.WindowWidth - (LineNumberWidth + 3);
         
         for (int i = 0; i < Math.Min(viewHeight, buffer.Lines.Count - ScrollY); i++)
         {
@@ -95,11 +96,63 @@ public class Renderer
             Console.ResetColor();
             
             string line = buffer.Lines[lineIdx].ToString();
-            if (ScrollX < line.Length)
+            
+            // Satırdaki eşleşmeleri filtrele
+            var lineMatches = buffer.Matches.Where(m => m.LineIndex == lineIdx).ToList();
+
+            for (int x = 0; x < viewWidth; x++)
             {
-                int len = Math.Min(line.Length - ScrollX, Console.WindowWidth - (LineNumberWidth + 3));
-                Console.Write(line.Substring(ScrollX, len));
+                int bufferX = x + ScrollX;
+                if (bufferX < line.Length)
+                {
+                    bool isMatch = false;
+                    bool isCurrentMatch = false;
+
+                    for (int mIdx = 0; mIdx < lineMatches.Count; mIdx++)
+                    {
+                        var m = lineMatches[mIdx];
+                        if (bufferX >= m.ColumnIndex && bufferX < m.ColumnIndex + m.Length)
+                        {
+                            isMatch = true;
+                            // Check if this is the currently selected match (for Ctrl+G)
+                            int overallMatchIndex = buffer.Matches.IndexOf(m);
+                            if (overallMatchIndex == buffer.CurrentMatchIndex)
+                            {
+                                isCurrentMatch = true;
+                            }
+                            break;
+                        }
+                    }
+
+                    if (cursor.IsInsideSelection(bufferX, lineIdx))
+                    {
+                        Console.BackgroundColor = ConsoleColor.Yellow;
+                        Console.ForegroundColor = ConsoleColor.Black;
+                    }
+                    else if (isCurrentMatch)
+                    {
+                        Console.BackgroundColor = ConsoleColor.DarkBlue;
+                        Console.ForegroundColor = ConsoleColor.White;
+                    }
+                    else if (isMatch)
+                    {
+                        Console.BackgroundColor = ConsoleColor.Blue;
+                        Console.ForegroundColor = ConsoleColor.White;
+                    }
+                    else
+                    {
+                        Console.ResetColor();
+                    }
+
+                    Console.Write(line[bufferX]);
+                }
+                else
+                {
+                    Console.ResetColor();
+                    Console.Write(' ');
+                }
             }
+            Console.ResetColor();
         }
     }
 

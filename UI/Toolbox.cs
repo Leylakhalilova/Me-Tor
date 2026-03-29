@@ -14,6 +14,7 @@ public static class Toolbox
     public static readonly List<ToolboxItem> EditItems = new()
     {
         new ToolboxItem("Bul", "CTRL+F"),
+        new ToolboxItem("Eşleşme Bulucu", "CTRL+G"),
         new ToolboxItem("Değiştir", "CTRL+H"),
         new ToolboxItem("Geri Al", "CTRL+Z"),
         new ToolboxItem("Kopyala", "CTRL+C"),
