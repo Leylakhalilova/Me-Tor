@@ -18,7 +18,7 @@ public class Renderer
         UpdateScroll(cursor);
         Console.Clear();
         RenderToolbox(buffer.CurrentFilePath);
-        RenderBuffer(buffer);
+        RenderBuffer(buffer, cursor);
         UpdateCursor(cursor);
     }
 
@@ -82,7 +82,7 @@ public class Renderer
         Console.ResetColor();
     }
 
-    private void RenderBuffer(EditorBuffer buffer)
+    private void RenderBuffer(EditorBuffer buffer, EditorCursor cursor)
     {
         int viewHeight = Console.WindowHeight - ToolboxHeight;
         int viewWidth = Console.WindowWidth - (LineNumberWidth + 3);
