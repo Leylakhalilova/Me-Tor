@@ -7,7 +7,7 @@ public static class Toolbox
     public static readonly List<ToolboxItem> FileItems = new()
     {
         new ToolboxItem("Aç", "CTRL+O"),
-        new ToolboxItem("Kaydet", "CTRL+S"),
+        new ToolboxItem("Kaydet", "CTRL+S/T"),
         new ToolboxItem("Farklı Kaydet", "CTRL+A"),
     };
 
@@ -15,7 +15,7 @@ public static class Toolbox
     {
         new ToolboxItem("Bul", "CTRL+F"),
         new ToolboxItem("Eşleşme Bulucu", "CTRL+G"),
-        new ToolboxItem("Değiştir", "CTRL+H"),
+        new ToolboxItem("Değiştir", "CTRL+R"),
         new ToolboxItem("Geri Al", "CTRL+Z"),
         new ToolboxItem("Kopyala", "CTRL+C"),
         new ToolboxItem("Kes", "CTRL+X"),

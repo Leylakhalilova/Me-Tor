@@ -58,30 +58,26 @@ class Program
             bool isCtrl = (keyInfo.Modifiers & ConsoleModifiers.Control) != 0;
             bool isShift = (keyInfo.Modifiers & ConsoleModifiers.Shift) != 0;
 
-            // Hem ConsoleKey hem de ASCII 19 (CTRL+S) kontrolü yapıyoruz
-            // Bazı Windows terminallerinde sadece KeyChar 19 gelir, bazılarında Modifiers+Key
-            bool isCtrlS = (keyInfo.Key == ConsoleKey.S && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0) || 
-                           (keyInfo.KeyChar == (char)19);
-            bool isCtrlZ = (keyInfo.Key == ConsoleKey.Z && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0) || 
-                           (keyInfo.KeyChar == (char)26);
-            bool isCtrlG = (keyInfo.Key == ConsoleKey.G && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0) || 
-                           (keyInfo.KeyChar == (char)7); // CTRL+G
-            bool isCtrlH = (keyInfo.Key == ConsoleKey.H && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0) || 
-                           (keyInfo.KeyChar == (char)8 && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0);
-            bool isCtrlC = (keyInfo.Key == ConsoleKey.C && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0) || 
-                           (keyInfo.KeyChar == (char)3);
-            bool isCtrlX = (keyInfo.Key == ConsoleKey.X && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0) || 
-                           (keyInfo.KeyChar == (char)24);
-            bool isCtrlV = (keyInfo.Key == ConsoleKey.V && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0) || 
-                           (keyInfo.KeyChar == (char)22);
-            bool isCtrlBackspace = (keyInfo.Key == ConsoleKey.Backspace && (keyInfo.Modifiers & ConsoleModifiers.Control) != 0 && keyInfo.KeyChar != (char)8) ||
-                                   (keyInfo.KeyChar == (char)127); // Bazı terminallerde Ctrl+Backspace ASCII 127 gönderir
+            // Kısayol kontrolleri
+            bool isCtrlS = (keyInfo.Key == ConsoleKey.S && isCtrl) || (keyInfo.KeyChar == (char)19);
+            bool isCtrlT = (keyInfo.Key == ConsoleKey.T && isCtrl) || (keyInfo.KeyChar == (char)20);
+            bool isCtrlZ = (keyInfo.Key == ConsoleKey.Z && isCtrl) || (keyInfo.KeyChar == (char)26);
+            bool isCtrlG = (keyInfo.Key == ConsoleKey.G && isCtrl) || (keyInfo.KeyChar == (char)7);
+            bool isCtrlF = (keyInfo.Key == ConsoleKey.F && isCtrl) || (keyInfo.KeyChar == (char)6);
+            bool isCtrlR = (keyInfo.Key == ConsoleKey.R && isCtrl) || (keyInfo.KeyChar == (char)18);
+            bool isCtrlC = (keyInfo.Key == ConsoleKey.C && isCtrl) || (keyInfo.KeyChar == (char)3);
+            bool isCtrlX = (keyInfo.Key == ConsoleKey.X && isCtrl) || (keyInfo.KeyChar == (char)24);
+            bool isCtrlV = (keyInfo.Key == ConsoleKey.V && isCtrl) || (keyInfo.KeyChar == (char)22);
+            
+            // Ctrl+Backspace: ASCII 127 (Linux) veya ASCII 8 (Windows) + Control Modifier
+            // H tuşu ile Backspace karışmaması için (ASCII 8) ConsoleKey.H kontrolü eklendi
+            bool isCtrlBackspace = (isCtrl && keyInfo.Key != ConsoleKey.H && (keyInfo.Key == ConsoleKey.Backspace || keyInfo.KeyChar == (char)8 || keyInfo.KeyChar == (char)127));
 
-            if ((keyInfo.Modifiers & ConsoleModifiers.Control) != 0 || isCtrlS || isCtrlZ || isCtrlG || isCtrlH || isCtrlC || isCtrlX || isCtrlV || isCtrlBackspace)
+            if (isCtrlS || isCtrlT || isCtrlZ || isCtrlG || isCtrlF || isCtrlR || isCtrlC || isCtrlX || isCtrlV || isCtrlBackspace)
             {
                 try
                 {
-                    if (isCtrlS)
+                    if (isCtrlS || isCtrlT)
                     {
                         cursor.ClearSelection();
                         if (string.IsNullOrEmpty(buffer.CurrentFilePath))
@@ -92,17 +88,14 @@ class Program
                                 FileExplorer.Save(saveAsPath, buffer.GetLines());
                                 buffer.CurrentFilePath = saveAsPath;
                                 buffer.IsModified = false;
+                                ShowStatus("Kaydedildi.");
                             }
                         }
                         else
                         {
-                            string? savePath = FileExplorer.Explore("Dosya Kaydet", Path.GetDirectoryName(buffer.CurrentFilePath), Path.GetFileName(buffer.CurrentFilePath));
-                            if (!string.IsNullOrWhiteSpace(savePath))
-                            {
-                                FileExplorer.Save(savePath, buffer.GetLines());
-                                buffer.CurrentFilePath = savePath;
-                                buffer.IsModified = false;
-                            }
+                            FileExplorer.Save(buffer.CurrentFilePath, buffer.GetLines());
+                            buffer.IsModified = false;
+                            ShowStatus("Değişiklikler kaydedildi.");
                         }
                     }
                     else if (isCtrlZ)
@@ -135,15 +128,15 @@ class Program
                         }
                         buffer.InsertText(cursor, internalClipboard);
                     }
-                    else if (isCtrlG)
+                    else if (isCtrlF)
                     {
                         cursor.ClearSelection();
                         Console.SetCursorPosition(0, Console.WindowHeight - 1);
-                        Console.Write("Aranacak metin (Eşleşme Bulucu): ");
+                        Console.Write("Aranacak metin (Kısmi Eşleşme): ");
                         string? searchTerm = ReadLineWithEsc();
                         if (!string.IsNullOrEmpty(searchTerm))
                         {
-                            buffer.UpdateSearch(searchTerm);
+                            buffer.UpdateSearch(searchTerm, false); // false for partial match
                             if (buffer.Matches.Count > 0)
                             {
                                 var firstMatch = buffer.Matches[0];
@@ -157,7 +150,29 @@ class Program
                             }
                         }
                     }
-                    else if (isCtrlH)
+                    else if (isCtrlG)
+                    {
+                        cursor.ClearSelection();
+                        Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                        Console.Write("Aranacak kelime (Tam Eşleşme): ");
+                        string? searchTerm = ReadLineWithEsc();
+                        if (!string.IsNullOrEmpty(searchTerm))
+                        {
+                            buffer.UpdateSearch(searchTerm, true); // true for whole word match
+                            if (buffer.Matches.Count > 0)
+                            {
+                                var firstMatch = buffer.Matches[0];
+                                cursor.Y = firstMatch.LineIndex;
+                                cursor.X = firstMatch.ColumnIndex;
+                                buffer.CurrentMatchIndex = 0;
+                            }
+                            else
+                            {
+                                ShowStatus("Eşleşme bulunamadı!");
+                            }
+                        }
+                    }
+                    else if (isCtrlR)
                     {
                         cursor.ClearSelection();
                         Console.SetCursorPosition(0, Console.WindowHeight - 1);
@@ -179,72 +194,13 @@ class Program
                     }
                     else if (isCtrlBackspace)
                     {
-                        cursor.ClearSelection();
-                        buffer.DeleteWord(cursor);
-                    }
-                    else
-                    {
-                        switch (keyInfo.Key)
+                        if (cursor.IsSelecting)
                         {
-                            case ConsoleKey.O: // Aç
-                                cursor.ClearSelection();
-                                var openPath = FileExplorer.Explore("Dosya Aç");
-                                if (!string.IsNullOrWhiteSpace(openPath))
-                                {
-                                    var lines = FileExplorer.Open(openPath);
-                                    buffer.Load(lines, openPath);
-                                    cursor.X = 0;
-                                    cursor.Y = 0;
-                                }
-                                break;
-                            case ConsoleKey.A: // Farklı Kaydet
-                                cursor.ClearSelection();
-                                var saveAsPath = FileExplorer.Explore("Farklı Kaydet", 
-                                    buffer.CurrentFilePath != null ? Path.GetDirectoryName(buffer.CurrentFilePath) : null,
-                                    buffer.CurrentFilePath != null ? Path.GetFileName(buffer.CurrentFilePath) : null);
-                                if (!string.IsNullOrWhiteSpace(saveAsPath))
-                                {
-                                    FileExplorer.Save(saveAsPath, buffer.GetLines());
-                                    buffer.CurrentFilePath = saveAsPath;
-                                    buffer.IsModified = false;
-                                }
-                                break;
-                            case ConsoleKey.F: // Bul
-                                cursor.ClearSelection();
-                                Console.SetCursorPosition(0, Console.WindowHeight - 1);
-                                Console.Write("Aranacak metin: ");
-                                string? searchTerm = ReadLineWithEsc();
-                                if (!string.IsNullOrEmpty(searchTerm))
-                                {
-                                    buffer.UpdateSearch(searchTerm);
-                                    if (buffer.Matches.Count > 0)
-                                    {
-                                        var firstMatch = buffer.Matches[0];
-                                        cursor.Y = firstMatch.LineIndex;
-                                        cursor.X = firstMatch.ColumnIndex;
-                                    }
-                                    else
-                                    {
-                                        ShowStatus("Bulunamadı!");
-                                    }
-                                }
-                                else {
-                                    buffer.ClearSearch();
-                                }
-                                break;
-                                case ConsoleKey.LeftArrow:
-                                case ConsoleKey.RightArrow:
-                            case ConsoleKey.UpArrow:
-                            case ConsoleKey.DownArrow:
-                                buffer.ClearSearch();
-                                if (isShift) cursor.StartSelection();
-                                else cursor.ClearSelection();
-
-                                if (keyInfo.Key == ConsoleKey.LeftArrow) cursor.MoveToPreviousWord(buffer.Lines);
-                                else if (keyInfo.Key == ConsoleKey.RightArrow) cursor.MoveToNextWord(buffer.Lines);
-                                else if (keyInfo.Key == ConsoleKey.UpArrow) cursor.Move(0, -1, buffer.Lines);
-                                else if (keyInfo.Key == ConsoleKey.DownArrow) cursor.Move(0, 1, buffer.Lines);
-                                break;
+                            buffer.DeleteSelection(cursor);
+                        }
+                        else
+                        {
+                            buffer.DeleteWord(cursor);
                         }
                     }
                 }
@@ -255,8 +211,13 @@ class Program
             }
             else
             {
-                // Temel navigasyon ve düzenleme (Seçimi temizle)
-                if (keyInfo.Key != ConsoleKey.None && !isShift)
+                // Temel navigasyon ve düzenleme
+                bool isNavKey = keyInfo.Key == ConsoleKey.LeftArrow || keyInfo.Key == ConsoleKey.RightArrow ||
+                                 keyInfo.Key == ConsoleKey.UpArrow || keyInfo.Key == ConsoleKey.DownArrow ||
+                                 keyInfo.Key == ConsoleKey.Home || keyInfo.Key == ConsoleKey.End;
+
+                // Navigasyon tuşuna basıldığında Ctrl basılı değilse seçimi temizle
+                if (!isCtrl && isNavKey)
                 {
                     cursor.ClearSelection();
                 }
@@ -273,7 +234,7 @@ class Program
                         }
                         else
                         {
-                            if (isShift) cursor.StartSelection();
+                            if (isCtrl) cursor.StartSelection();
                             cursor.Move(0, -1, buffer.Lines);
                         }
                         break;
@@ -287,28 +248,38 @@ class Program
                         }
                         else
                         {
-                            if (isShift) cursor.StartSelection();
+                            if (isCtrl) cursor.StartSelection();
                             cursor.Move(0, 1, buffer.Lines);
                         }
                         break;
                     case ConsoleKey.LeftArrow:
                         buffer.ClearSearch();
-                        if (isShift) cursor.StartSelection();
-                        cursor.Move(-1, 0, buffer.Lines);
+                        if (isCtrl)
+                        {
+                            cursor.StartSelection();
+                            if (isShift) cursor.MoveToPreviousWord(buffer.Lines);
+                            else cursor.Move(-1, 0, buffer.Lines);
+                        }
+                        else cursor.Move(-1, 0, buffer.Lines);
                         break;
                     case ConsoleKey.RightArrow:
                         buffer.ClearSearch();
-                        if (isShift) cursor.StartSelection();
-                        cursor.Move(1, 0, buffer.Lines);
+                        if (isCtrl)
+                        {
+                            cursor.StartSelection();
+                            if (isShift) cursor.MoveToNextWord(buffer.Lines);
+                            else cursor.Move(1, 0, buffer.Lines);
+                        }
+                        else cursor.Move(1, 0, buffer.Lines);
                         break;
                     case ConsoleKey.Home:
                         buffer.ClearSearch();
-                        if (isShift) cursor.StartSelection();
+                        if (isCtrl) cursor.StartSelection();
                         cursor.X = 0;
                         break;
                     case ConsoleKey.End:
                         buffer.ClearSearch();
-                        if (isShift) cursor.StartSelection();
+                        if (isCtrl) cursor.StartSelection();
                         cursor.X = buffer.Lines[cursor.Y].Length;
                         break;
                     case ConsoleKey.Enter:

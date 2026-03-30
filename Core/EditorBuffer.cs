@@ -36,10 +36,10 @@ public class EditorBuffer
         SearchTerm = null;
     }
 
-    public void UpdateSearch(string term)
+    public void UpdateSearch(string term, bool wholeWord = false)
     {
         SearchTerm = term;
-        Matches = SearchAlgorithms.FindAll(Lines, term);
+        Matches = SearchAlgorithms.FindAll(Lines, term, wholeWord);
         if (Matches.Count > 0) CurrentMatchIndex = 0;
         else CurrentMatchIndex = -1;
     }
@@ -151,10 +151,7 @@ public class EditorBuffer
             Lines[startY] = new StringBuilder(firstLineStart + lastLineEnd);
             
             // Remove lines in between and the end line
-            for (int i = 0; i < (endY - startY); i++)
-            {
-                Lines.RemoveAt(startY + 1);
-            }
+            Lines.RemoveRange(startY + 1, endY - startY);
         }
 
         UndoManager.PushAction(startX, startY, deletedText, ActionType.DeleteSelection, previousState);
@@ -281,14 +278,13 @@ public class EditorBuffer
         int startX = cursor.X;
         string line = Lines[cursor.Y].ToString();
 
-        // 1. Skip contiguous non-whitespace (the word)
-        while (startX > 0 && !char.IsWhiteSpace(line[startX - 1]))
+        // 1. Skip trailing whitespace
+        while (startX > 0 && char.IsWhiteSpace(line[startX - 1]))
         {
             startX--;
         }
-
-        // 2. Skip contiguous whitespace
-        while (startX > 0 && char.IsWhiteSpace(line[startX - 1]))
+        // 2. Skip the word (contiguous non-whitespace)
+        while (startX > 0 && !char.IsWhiteSpace(line[startX - 1]))
         {
             startX--;
         }

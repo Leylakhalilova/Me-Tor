@@ -18,7 +18,7 @@ public struct SearchMatch
 
 public static class SearchAlgorithms
 {
-    public static List<SearchMatch> FindAll(List<StringBuilder> lines, string searchTerm)
+    public static List<SearchMatch> FindAll(List<StringBuilder> lines, string searchTerm, bool wholeWord = false)
     {
         var matches = new List<SearchMatch>();
         if (string.IsNullOrEmpty(searchTerm)) return matches;
@@ -26,7 +26,12 @@ public static class SearchAlgorithms
         for (int i = 0; i < lines.Count; i++)
         {
             string line = lines[i].ToString();
-            string pattern = @"\b" + System.Text.RegularExpressions.Regex.Escape(searchTerm) + @"\b";
+            string pattern = System.Text.RegularExpressions.Regex.Escape(searchTerm);
+            if (wholeWord)
+            {
+                pattern = @"\b" + pattern + @"\b";
+            }
+            
             var matchesInLine = System.Text.RegularExpressions.Regex.Matches(
                 line, 
                 pattern, 
