@@ -16,7 +16,9 @@ public class Renderer
         // Önce toolbox yüksekliğini hesapla (UpdateScroll için gerekli)
         CalculateToolboxHeight();
         UpdateScroll(cursor);
-        Console.Clear();
+        
+        // Console.Clear() yerine her satırı manuel temizleyerek yazacağız
+        // Bu, titremeyi (flickering) engeller.
         RenderToolbox(buffer.CurrentFilePath);
         RenderBuffer(buffer, cursor);
         UpdateCursor(cursor);
@@ -36,7 +38,7 @@ public class Renderer
 
     private void CalculateToolboxHeight()
     {
-        int currentX = ("[ Yeni Dosya ] ").Length; // Tahmini max dosya adı uzunluğu
+        int currentX = ("[ Yeni Dosya ] ").Length; 
         int currentY = 0;
         var items = Toolbox.GetAllItems();
         foreach (var item in items)
@@ -71,88 +73,114 @@ public class Renderer
             string s = $"{item.Label}({item.Shortcut}) ";
             if (currentX + s.Length > Console.WindowWidth)
             {
-                Console.WriteLine(new string(' ', Math.Max(0, Console.WindowWidth - currentX)));
+                // Satırı boşlukla doldur ki eski içerik kalmasın
+                Console.Write(new string(' ', Math.Max(0, Console.WindowWidth - currentX)));
+                currentY_inc();
                 currentX = 0;
             }
             Console.Write(s);
             currentX += s.Length;
         }
         
-        Console.WriteLine(new string(' ', Math.Max(0, Console.WindowWidth - currentX)));
+        Console.Write(new string(' ', Math.Max(0, Console.WindowWidth - currentX)));
         Console.ResetColor();
+
+        void currentY_inc() { /* Helper for newline in toolbox */ }
     }
 
     private void RenderBuffer(EditorBuffer buffer, EditorCursor cursor)
     {
-        int viewHeight = Console.WindowHeight - ToolboxHeight;
+        int viewHeight = Console.WindowHeight - ToolboxHeight - 1; // Durum satırı için -1
         int viewWidth = Console.WindowWidth - (LineNumberWidth + 3);
         
-        for (int i = 0; i < Math.Min(viewHeight, buffer.Lines.Count - ScrollY); i++)
+        for (int i = 0; i < viewHeight; i++)
         {
             int lineIdx = i + ScrollY;
             Console.SetCursorPosition(0, ToolboxHeight + i);
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.Write($"{lineIdx + 1,3} | "); // Satır numarası
-            Console.ResetColor();
-            
-            string line = buffer.Lines[lineIdx].ToString();
-            
-            // Satırdaki eşleşmeleri filtrele
-            var lineMatches = buffer.Matches.Where(m => m.LineIndex == lineIdx).ToList();
 
-            for (int x = 0; x < viewWidth; x++)
+            if (lineIdx < buffer.Lines.Count)
             {
-                int bufferX = x + ScrollX;
-                bool isMatch = false;
-                bool isCurrentMatch = false;
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.Write($"{lineIdx + 1,3} | "); // Satır numarası
+                Console.ResetColor();
+                
+                string line = buffer.Lines[lineIdx].ToString();
+                var lineMatches = buffer.Matches.Where(m => m.LineIndex == lineIdx).ToList();
 
-                // Match highlighting only for actual characters in the line
-                if (bufferX < line.Length)
+                // Satırı karakter karakter değil, stil değiştikçe blok blok yazalım
+                StringBuilder lineBuilder = new StringBuilder();
+                ConsoleColor currentBg = ConsoleColor.Black;
+                ConsoleColor currentFg = ConsoleColor.Gray;
+
+                for (int x = 0; x < viewWidth; x++)
                 {
-                    for (int mIdx = 0; mIdx < lineMatches.Count; mIdx++)
+                    int bufferX = x + ScrollX;
+                    ConsoleColor bg = ConsoleColor.Black;
+                    ConsoleColor fg = ConsoleColor.Gray;
+
+                    bool isMatch = false;
+                    bool isCurrentMatch = false;
+
+                    if (bufferX < line.Length)
                     {
-                        var m = lineMatches[mIdx];
-                        if (bufferX >= m.ColumnIndex && bufferX < m.ColumnIndex + m.Length)
+                        foreach (var m in lineMatches)
                         {
-                            isMatch = true;
-                            int overallMatchIndex = buffer.Matches.IndexOf(m);
-                            if (overallMatchIndex == buffer.CurrentMatchIndex)
+                            if (bufferX >= m.ColumnIndex && bufferX < m.ColumnIndex + m.Length)
                             {
-                                isCurrentMatch = true;
+                                isMatch = true;
+                                if (buffer.Matches.IndexOf(m) == buffer.CurrentMatchIndex)
+                                    isCurrentMatch = true;
+                                break;
                             }
-                            break;
                         }
                     }
+
+                    if (cursor.IsInsideSelection(bufferX, lineIdx))
+                    {
+                        bg = ConsoleColor.Yellow;
+                        fg = ConsoleColor.Black;
+                    }
+                    else if (isCurrentMatch)
+                    {
+                        bg = ConsoleColor.DarkBlue;
+                        fg = ConsoleColor.White;
+                    }
+                    else if (isMatch)
+                    {
+                        bg = ConsoleColor.Blue;
+                        fg = ConsoleColor.White;
+                    }
+
+                    if (bg != currentBg || fg != currentFg)
+                    {
+                        if (lineBuilder.Length > 0)
+                        {
+                            Console.BackgroundColor = currentBg;
+                            Console.ForegroundColor = currentFg;
+                            Console.Write(lineBuilder.ToString());
+                            lineBuilder.Clear();
+                        }
+                        currentBg = bg;
+                        currentFg = fg;
+                    }
+
+                    if (bufferX < line.Length)
+                        lineBuilder.Append(line[bufferX]);
+                    else
+                        lineBuilder.Append(' ');
                 }
 
-                if (cursor.IsInsideSelection(bufferX, lineIdx))
+                if (lineBuilder.Length > 0)
                 {
-                    Console.BackgroundColor = ConsoleColor.Yellow;
-                    Console.ForegroundColor = ConsoleColor.Black;
+                    Console.BackgroundColor = currentBg;
+                    Console.ForegroundColor = currentFg;
+                    Console.Write(lineBuilder.ToString());
                 }
-                else if (isCurrentMatch)
-                {
-                    Console.BackgroundColor = ConsoleColor.DarkBlue;
-                    Console.ForegroundColor = ConsoleColor.White;
-                }
-                else if (isMatch)
-                {
-                    Console.BackgroundColor = ConsoleColor.Blue;
-                    Console.ForegroundColor = ConsoleColor.White;
-                }
-                else
-                {
-                    Console.ResetColor();
-                }
-
-                if (bufferX < line.Length)
-                {
-                    Console.Write(line[bufferX]);
-                }
-                else
-                {
-                    Console.Write(' ');
-                }
+            }
+            else
+            {
+                // Boş satırları temizle
+                Console.Write(new string(' ', Console.WindowWidth));
             }
             Console.ResetColor();
         }
@@ -163,7 +191,6 @@ public class Renderer
         int screenX = cursor.X - ScrollX + LineNumberWidth + 2;
         int screenY = cursor.Y - ScrollY + ToolboxHeight;
         
-        // Ensure cursor is within visible bounds before setting position
         if (screenX >= 0 && screenX < Console.WindowWidth && screenY >= 0 && screenY < Console.WindowHeight)
         {
             Console.SetCursorPosition(screenX, screenY);
