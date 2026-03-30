@@ -366,31 +366,42 @@ class Program
                     case ConsoleKey.Escape:
                         if (buffer.IsModified)
                         {
-                            Console.SetCursorPosition(0, Console.WindowHeight - 1);
-                            Console.Write("Değişiklikleri kaydetmek istiyor musunuz? (e/h): ");
-                            var choice = Console.ReadKey(true).Key;
-                            if (choice == ConsoleKey.E)
+                            bool validExit = false;
+                            while (!validExit)
                             {
-                                try
+                                Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                                Console.Write(new string(' ', Console.WindowWidth - 1));
+                                Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                                Console.Write("Değişiklikleri kaydetmek istiyor musunuz? (e/h): ");
+                                var choiceExit = Console.ReadKey(true).Key;
+                                if (choiceExit == ConsoleKey.E)
                                 {
-                                    if (string.IsNullOrEmpty(buffer.CurrentFilePath))
+                                    validExit = true;
+                                    try
                                     {
-                                        var path = FileExplorer.Explore("Kapanış Öncesi Kaydet");
-                                        if (!string.IsNullOrWhiteSpace(path))
-                                            FileExplorer.Save(path, buffer.GetLines());
+                                        if (string.IsNullOrEmpty(buffer.CurrentFilePath))
+                                        {
+                                            var path = FileExplorer.Explore("Kapanış Öncesi Kaydet");
+                                            if (!string.IsNullOrWhiteSpace(path))
+                                                FileExplorer.Save(path, buffer.GetLines());
+                                        }
+                                        else
+                                        {
+                                            FileExplorer.Save(buffer.CurrentFilePath, buffer.GetLines());
+                                        }
                                     }
-                                    else
+                                    catch (Exception ex)
                                     {
-                                        FileExplorer.Save(buffer.CurrentFilePath, buffer.GetLines());
+                                        Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                                        Console.BackgroundColor = ConsoleColor.Red;
+                                        Console.Write($"KAYDETME HATASI: {ex.Message}");
+                                        Console.ResetColor();
+                                        Console.ReadKey(true);
                                     }
                                 }
-                                catch (Exception ex)
+                                else if (choiceExit == ConsoleKey.H)
                                 {
-                                    Console.SetCursorPosition(0, Console.WindowHeight - 1);
-                                    Console.BackgroundColor = ConsoleColor.Red;
-                                    Console.Write($"KAYDETME HATASI: {ex.Message}");
-                                    Console.ResetColor();
-                                    Console.ReadKey(true);
+                                    validExit = true;
                                 }
                             }
                         }
