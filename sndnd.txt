@@ -1,0 +1,6 @@
+galiba hatalar bitti. ama emin değilim. her an farklı bir hata bulabiliriz gibi geliyor.
+ düzeltilen hatalar:
+  - seçim işlmeleri tamamen hatalıydı baştan sona yenilendi artık çalışıyor hatasız.
+  - ctrl+backspace ile ctrl+h aynı değeri çevirdikleri için aynı işlemi yapıyordu ctrl+h'ı kaldırdım ctrl+r olarak ayarladım(forumda hocalara sorulmuş bu ve hocalar böyle yapabilirsiniz demiş).
+  - ctrl+s kombinasyonu windowsta çalışmadığı için ctrl+t olarak ikincil bir kısayol ile de kullanılabiliyor. 
+  - ctrl+f hatalı çalışıyordu düzelttim.
