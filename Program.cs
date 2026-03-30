@@ -60,6 +60,8 @@ class Program
 
             // Kısayol kontrolleri
             bool isCtrlS = (keyInfo.Key == ConsoleKey.S && isCtrl) || (keyInfo.KeyChar == (char)19);
+            bool isCtrlO = (keyInfo.Key == ConsoleKey.O && isCtrl) || (keyInfo.KeyChar == (char)15);
+            bool isCtrlA = (keyInfo.Key == ConsoleKey.A && isCtrl) || (keyInfo.KeyChar == (char)1);
             bool isCtrlT = (keyInfo.Key == ConsoleKey.T && isCtrl) || (keyInfo.KeyChar == (char)20);
             bool isCtrlZ = (keyInfo.Key == ConsoleKey.Z && isCtrl) || (keyInfo.KeyChar == (char)26);
             bool isCtrlG = (keyInfo.Key == ConsoleKey.G && isCtrl) || (keyInfo.KeyChar == (char)7);
@@ -73,7 +75,7 @@ class Program
             // H tuşu ile Backspace karışmaması için (ASCII 8) ConsoleKey.H kontrolü eklendi
             bool isCtrlBackspace = (isCtrl && keyInfo.Key != ConsoleKey.H && (keyInfo.Key == ConsoleKey.Backspace || keyInfo.KeyChar == (char)8 || keyInfo.KeyChar == (char)127));
 
-            if (isCtrlS || isCtrlT || isCtrlZ || isCtrlG || isCtrlF || isCtrlR || isCtrlC || isCtrlX || isCtrlV || isCtrlBackspace)
+            if (isCtrlS || isCtrlT || isCtrlO || isCtrlA || isCtrlZ || isCtrlG || isCtrlF || isCtrlR || isCtrlC || isCtrlX || isCtrlV || isCtrlBackspace)
             {
                 try
                 {
@@ -96,6 +98,51 @@ class Program
                             FileExplorer.Save(buffer.CurrentFilePath, buffer.GetLines());
                             buffer.IsModified = false;
                             ShowStatus("Değişiklikler kaydedildi.");
+                        }
+                    }
+                    else if (isCtrlA)
+                    {
+                        cursor.ClearSelection();
+                        var saveAsPath = FileExplorer.Explore("Farklı Kaydet", null, buffer.CurrentFilePath);
+                        if (!string.IsNullOrWhiteSpace(saveAsPath))
+                        {
+                            FileExplorer.Save(saveAsPath, buffer.GetLines());
+                            buffer.CurrentFilePath = saveAsPath;
+                            buffer.IsModified = false;
+                            ShowStatus("Farklı kaydedildi.");
+                        }
+                    }
+                    else if (isCtrlO)
+                    {
+                        if (buffer.IsModified)
+                        {
+                            Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                            Console.Write("Değişiklikleri kaydetmek istiyor musunuz? (e/h): ");
+                            var choice = Console.ReadKey(true).Key;
+                            if (choice == ConsoleKey.E)
+                            {
+                                if (string.IsNullOrEmpty(buffer.CurrentFilePath))
+                                {
+                                    var saveAsPath = FileExplorer.Explore("Kaydet", null, null);
+                                    if (!string.IsNullOrWhiteSpace(saveAsPath))
+                                        FileExplorer.Save(saveAsPath, buffer.GetLines());
+                                }
+                                else
+                                {
+                                    FileExplorer.Save(buffer.CurrentFilePath, buffer.GetLines());
+                                }
+                            }
+                        }
+
+                        var openPath = FileExplorer.Explore("Dosya Aç", null, null);
+                        if (!string.IsNullOrWhiteSpace(openPath) && File.Exists(openPath))
+                        {
+                            var content = FileExplorer.Open(openPath);
+                            buffer.Load(content, openPath);
+                            cursor.X = 0;
+                            cursor.Y = 0;
+                            cursor.ClearSelection();
+                            ShowStatus("Dosya açıldı.");
                         }
                     }
                     else if (isCtrlZ)
