@@ -46,6 +46,7 @@ class Program
         }
 
         var buffer = new EditorBuffer();
+        buffer.CurrentFilePath = "yeni_dosya.txt"; // Başlangıçta varsayılan dosya adı
         var cursor = new EditorCursor();
         var renderer = new Renderer();
 
