@@ -1,0 +1,1605 @@
+using System.Text;
+using System.Runtime.InteropServices;
+using MiniNotepad.Core;
+using MiniNotepad.UI;
+using MiniNotepad.IO;
+
+namespace MiniNotepad;
+
+class Program
+{
+    static string internalClipboard = "";
+    // Windows terminal ayarlarını değiştirmek için Win32 API
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr GetStdHandle(int nStdHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+    const int STD_INPUT_HANDLE = -10;
+    const uint ENABLE_PROCESSED_INPUT = 0x0001;
+
+    static void Main(string[] args)
+    {
+        Console.OutputEncoding = Encoding.UTF8;
+        Console.InputEncoding = Encoding.UTF8;
+        Console.CursorVisible = true;
+        Console.TreatControlCAsInput = true;
+
+        // Windows'ta CTRL+S gibi tuşların terminal tarafından yutulmasını engelle
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            IntPtr hIn = GetStdHandle(STD_INPUT_HANDLE);
+            if (GetConsoleMode(hIn, out uint mode))
+            {
+                // ENABLE_PROCESSED_INPUT (0x0001): CTRL+C, CTRL+S gibi tuşların sistem tarafından işlenmesini engeller
+                // ENABLE_QUICK_EDIT_MODE (0x0040): Fare ile seçim yapmayı engeller (inputu durdurabilir)
+                // ENABLE_EXTENDED_FLAGS (0x0080): QuickEdit gibi flagleri değiştirmek için gereklidir
+                mode &= ~ENABLE_PROCESSED_INPUT;
+                mode &= ~0x0040u; // QuickEdit OFF (uint literal eklendi)
+                mode |= 0x0080u;  // Extended Flags ON (uint literal eklendi)
+                SetConsoleMode(hIn, mode);
+            }
+        }
+
+        var buffer = new EditorBuffer();
+        buffer.CurrentFilePath = "yeni_dosya.txt"; // Başlangıçta varsayılan dosya adı
+        var cursor = new EditorCursor();
+        var renderer = new Renderer();
+
+        bool running = true;
+        renderer.Render(buffer, cursor);
+
+        while (running)
+        {
+            var keyInfo = Console.ReadKey(true);
+            bool isCtrl = (keyInfo.Modifiers & ConsoleModifiers.Control) != 0;
+            bool isShift = (keyInfo.Modifiers & ConsoleModifiers.Shift) != 0;
+
+            // Kısayol kontrolleri
+            bool isCtrlS = (keyInfo.Key == ConsoleKey.S && isCtrl) || (keyInfo.KeyChar == (char)19);
+            bool isCtrlO = (keyInfo.Key == ConsoleKey.O && isCtrl) || (keyInfo.KeyChar == (char)15);
+            bool isCtrlA = (keyInfo.Key == ConsoleKey.A && isCtrl) || (keyInfo.KeyChar == (char)1);
+            bool isCtrlT = (keyInfo.Key == ConsoleKey.T && isCtrl) || (keyInfo.KeyChar == (char)20);
+            bool isCtrlZ = (keyInfo.Key == ConsoleKey.Z && isCtrl) || (keyInfo.KeyChar == (char)26);
+            bool isCtrlG = (keyInfo.Key == ConsoleKey.G && isCtrl) || (keyInfo.KeyChar == (char)7);
+            bool isCtrlF = (keyInfo.Key == ConsoleKey.F && isCtrl) || (keyInfo.KeyChar == (char)6);
+            bool isCtrlR = (keyInfo.Key == ConsoleKey.R && isCtrl) || (keyInfo.KeyChar == (char)18);
+            bool isCtrlC = (keyInfo.Key == ConsoleKey.C && isCtrl) || (keyInfo.KeyChar == (char)3);
+            bool isCtrlX = (keyInfo.Key == ConsoleKey.X && isCtrl) || (keyInfo.KeyChar == (char)24);
+            bool isCtrlV = (keyInfo.Key == ConsoleKey.V && isCtrl) || (keyInfo.KeyChar == (char)22);
+            
+            // Ctrl+Backspace: ASCII 127 (Linux) veya ASCII 8 (Windows) + Control Modifier
+            // H tuşu ile Backspace karışmaması için (ASCII 8) ConsoleKey.H kontrolü eklendi
+            bool isCtrlBackspace = (isCtrl && keyInfo.Key != ConsoleKey.H && (keyInfo.Key == ConsoleKey.Backspace || keyInfo.KeyChar == (char)8 || keyInfo.KeyChar == (char)127));
+
+            if (isCtrlS || isCtrlT || isCtrlO || isCtrlA || isCtrlZ || isCtrlG || isCtrlF || isCtrlR || isCtrlC || isCtrlX || isCtrlV || isCtrlBackspace)
+            {
+                try
+                {
+                    if (isCtrlS || isCtrlT)
+                    {
+                        cursor.ClearSelection();
+                        if (string.IsNullOrEmpty(buffer.CurrentFilePath))
+                        {
+                            var saveAsPath = FileExplorer.Explore("Farklı Kaydet", null, null);
+                            if (!string.IsNullOrWhiteSpace(saveAsPath))
+                            {
+                                FileExplorer.Save(saveAsPath, buffer.GetLines());
+                                buffer.CurrentFilePath = saveAsPath;
+                                buffer.IsModified = false;
+                                ShowStatus("Kaydedildi.");
+                            }
+                        }
+                        else
+                        {
+                            FileExplorer.Save(buffer.CurrentFilePath, buffer.GetLines());
+                            buffer.IsModified = false;
+                            ShowStatus("Değişiklikler kaydedildi.");
+                        }
+                    }
+                    else if (isCtrlA)
+                    {
+                        cursor.ClearSelection();
+                        var saveAsPath = FileExplorer.Explore("Farklı Kaydet", null, buffer.CurrentFilePath);
+                        if (!string.IsNullOrWhiteSpace(saveAsPath))
+                        {
+                            FileExplorer.Save(saveAsPath, buffer.GetLines());
+                            buffer.CurrentFilePath = saveAsPath;
+                            buffer.IsModified = false;
+                            ShowStatus("Farklı kaydedildi.");
+                        }
+                    }
+                    else if (isCtrlO)
+                    {
+                        if (buffer.IsModified)
+                        {
+                            Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                            Console.Write("Değişiklikleri kaydetmek istiyor musunuz? (e/h): ");
+                            var choice = Console.ReadKey(true).Key;
+                            if (choice == ConsoleKey.E)
+                            {
+                                if (string.IsNullOrEmpty(buffer.CurrentFilePath))
+                                {
+                                    var saveAsPath = FileExplorer.Explore("Kaydet", null, null);
+                                    if (!string.IsNullOrWhiteSpace(saveAsPath))
+                                        FileExplorer.Save(saveAsPath, buffer.GetLines());
+                                }
+                                else
+                                {
+                                    FileExplorer.Save(buffer.CurrentFilePath, buffer.GetLines());
+                                }
+                            }
+                        }
+
+                        var openPath = FileExplorer.Explore("Dosya Aç", null, null);
+                        if (!string.IsNullOrWhiteSpace(openPath) && File.Exists(openPath))
+                        {
+                            var content = FileExplorer.Open(openPath);
+                            buffer.Load(content, openPath);
+                            cursor.X = 0;
+                            cursor.Y = 0;
+                            cursor.ClearSelection();
+                            ShowStatus("Dosya açıldı.");
+                        }
+                    }
+                    else if (isCtrlZ)
+                    {
+                        buffer.Undo(cursor);
+                        cursor.ClearSelection();
+                    }
+                    else if (isCtrlC)
+                    {
+                        if (cursor.IsSelecting)
+                        {
+                            internalClipboard = buffer.GetSelectedText(cursor);
+                            ShowStatus("Seçim kopyalandı.");
+                        }
+                    }
+                    else if (isCtrlX)
+                    {
+                        if (cursor.IsSelecting)
+                        {
+                            internalClipboard = buffer.GetSelectedText(cursor);
+                            buffer.DeleteSelection(cursor);
+                            ShowStatus("Seçim kesildi.");
+                        }
+                    }
+                    else if (isCtrlV)
+                    {
+                        if (cursor.IsSelecting)
+                        {
+                            buffer.DeleteSelection(cursor);
+                        }
+                        buffer.InsertText(cursor, internalClipboard);
+                    }
+                    else if (isCtrlF)
+                    {
+                        cursor.ClearSelection();
+                        Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                        Console.Write("Aranacak metin (Kısmi Eşleşme): ");
+                        string? searchTerm = ReadLineWithEsc();
+                        if (!string.IsNullOrEmpty(searchTerm))
+                        {
+                            buffer.UpdateSearch(searchTerm, false); // false for partial match
+                            if (buffer.Matches.Count > 0)
+                            {
+                                var firstMatch = buffer.Matches[0];
+                                cursor.Y = firstMatch.LineIndex;
+                                cursor.X = firstMatch.ColumnIndex;
+                                buffer.CurrentMatchIndex = 0;
+                            }
+                            else
+                            {
+                                ShowStatus("Eşleşme bulunamadı!");
+                            }
+                        }
+                    }
+                    else if (isCtrlG)
+                    {
+                        cursor.ClearSelection();
+                        Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                        Console.Write("Aranacak kelime (Tam Eşleşme): ");
+                        string? searchTerm = ReadLineWithEsc();
+                        if (!string.IsNullOrEmpty(searchTerm))
+                        {
+                            buffer.UpdateSearch(searchTerm, true); // true for whole word match
+                            if (buffer.Matches.Count > 0)
+                            {
+                                var firstMatch = buffer.Matches[0];
+                                cursor.Y = firstMatch.LineIndex;
+                                cursor.X = firstMatch.ColumnIndex;
+                                buffer.CurrentMatchIndex = 0;
+                            }
+                            else
+                            {
+                                ShowStatus("Eşleşme bulunamadı!");
+                            }
+                        }
+                    }
+                    else if (isCtrlR)
+                    {
+                        cursor.ClearSelection();
+                        Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                        Console.Write("Değiştirilecek kelime: ");
+                        string? oldText = ReadLineWithEsc();
+                        if (oldText != null)
+                        {
+                            Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                            Console.Write(new string(' ', Console.WindowWidth - 1));
+                            Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                            Console.Write("Yeni kelime: ");
+                            string? newText = ReadLineWithEsc();
+                            if (newText != null)
+                            {
+                                buffer.ReplaceAll(oldText, newText);
+                                ShowStatus("Tüm eşleşmeler değiştirildi.");
+                            }
+                        }
+                    }
+                    else if (isCtrlBackspace)
+                    {
+                        if (cursor.IsSelecting)
+                        {
+                            buffer.DeleteSelection(cursor);
+                        }
+                        else
+                        {
+                            buffer.DeleteWord(cursor);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ShowStatus($"HATA: {ex.Message}");
+                }
+            }
+            else
+            {
+                // Temel navigasyon ve düzenleme
+                bool isNavKey = keyInfo.Key == ConsoleKey.LeftArrow || keyInfo.Key == ConsoleKey.RightArrow ||
+                                 keyInfo.Key == ConsoleKey.UpArrow || keyInfo.Key == ConsoleKey.DownArrow ||
+                                 keyInfo.Key == ConsoleKey.Home || keyInfo.Key == ConsoleKey.End;
+
+                // Navigasyon tuşuna basıldığında Ctrl basılı değilse seçimi temizle
+                if (!isCtrl && isNavKey)
+                {
+                    cursor.ClearSelection();
+                }
+
+                switch (keyInfo.Key)
+                {
+                    case ConsoleKey.UpArrow:
+                        if (buffer.Matches.Count > 0 && buffer.CurrentMatchIndex != -1)
+                        {
+                            buffer.CurrentMatchIndex = (buffer.CurrentMatchIndex - 1 + buffer.Matches.Count) % buffer.Matches.Count;
+                            var m = buffer.Matches[buffer.CurrentMatchIndex];
+                            cursor.Y = m.LineIndex;
+                            cursor.X = m.ColumnIndex;
+                        }
+                        else
+                        {
+                            if (isCtrl) cursor.StartSelection();
+                            cursor.Move(0, -1, buffer.Lines);
+                        }
+                        break;
+                    case ConsoleKey.DownArrow:
+                        if (buffer.Matches.Count > 0 && buffer.CurrentMatchIndex != -1)
+                        {
+                            buffer.CurrentMatchIndex = (buffer.CurrentMatchIndex + 1) % buffer.Matches.Count;
+                            var m = buffer.Matches[buffer.CurrentMatchIndex];
+                            cursor.Y = m.LineIndex;
+                            cursor.X = m.ColumnIndex;
+                        }
+                        else
+                        {
+                            if (isCtrl) cursor.StartSelection();
+                            cursor.Move(0, 1, buffer.Lines);
+                        }
+                        break;
+                    case ConsoleKey.LeftArrow:
+                        buffer.ClearSearch();
+                        if (isCtrl)
+                        {
+                            cursor.StartSelection();
+                            if (isShift) cursor.MoveToPreviousWord(buffer.Lines);
+                            else cursor.Move(-1, 0, buffer.Lines);
+                        }
+                        else cursor.Move(-1, 0, buffer.Lines);
+                        break;
+                    case ConsoleKey.RightArrow:
+                        buffer.ClearSearch();
+                        if (isCtrl)
+                        {
+                            cursor.StartSelection();
+                            if (isShift) cursor.MoveToNextWord(buffer.Lines);
+                            else cursor.Move(1, 0, buffer.Lines);
+                        }
+                        else cursor.Move(1, 0, buffer.Lines);
+                        break;
+                    case ConsoleKey.Home:
+                        buffer.ClearSearch();
+                        if (isCtrl) cursor.StartSelection();
+                        cursor.X = 0;
+                        break;
+                    case ConsoleKey.End:
+                        buffer.ClearSearch();
+                        if (isCtrl) cursor.StartSelection();
+                        cursor.X = buffer.Lines[cursor.Y].Length;
+                        break;
+                    case ConsoleKey.Enter:
+                        buffer.ClearSearch();
+                        if (cursor.IsSelecting) buffer.DeleteSelection(cursor);
+                        buffer.NewLine(cursor.X, cursor.Y);
+                        cursor.X = 0;
+                        cursor.Y++;
+                        break;
+                    case ConsoleKey.Backspace:
+                        buffer.ClearSearch();
+                        if (cursor.IsSelecting)
+                        {
+                            buffer.DeleteSelection(cursor);
+                        }
+                        else if (cursor.X > 0 || cursor.Y > 0)
+                        {
+                            int oldX = cursor.X;
+                            int oldY = cursor.Y;
+                            if (cursor.X == 0)
+                            {
+                                cursor.Y--;
+                                cursor.X = buffer.Lines[cursor.Y].Length;
+                            }
+                            else
+                            {
+                                cursor.X--;
+                            }
+                            buffer.DeleteChar(oldX, oldY);
+                        }
+                        break;
+                    case ConsoleKey.Delete:
+                        buffer.ClearSearch();
+                        if (cursor.IsSelecting) buffer.DeleteSelection(cursor);
+                        else buffer.DeleteForward(cursor.X, cursor.Y);
+                        break;
+                    case ConsoleKey.Escape:
+                        if (buffer.IsModified)
+                        {
+                            bool validExit = false;
+                            while (!validExit)
+                            {
+                                Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                                Console.Write(new string(' ', Console.WindowWidth - 1));
+                                Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                                Console.Write("Değişiklikleri kaydetmek istiyor musunuz? (e/h): ");
+                                var choiceExit = Console.ReadKey(true).Key;
+                                if (choiceExit == ConsoleKey.E)
+                                {
+                                    validExit = true;
+                                    try
+                                    {
+                                        if (string.IsNullOrEmpty(buffer.CurrentFilePath))
+                                        {
+                                            var path = FileExplorer.Explore("Kapanış Öncesi Kaydet");
+                                            if (!string.IsNullOrWhiteSpace(path))
+                                                FileExplorer.Save(path, buffer.GetLines());
+                                        }
+                                        else
+                                        {
+                                            FileExplorer.Save(buffer.CurrentFilePath, buffer.GetLines());
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.SetCursorPosition(0, Console.WindowHeight - 1);
+                                        Console.BackgroundColor = ConsoleColor.Red;
+                                        Console.Write($"KAYDETME HATASI: {ex.Message}");
+                                        Console.ResetColor();
+                                        Console.ReadKey(true);
+                                    }
+                                }
+                                else if (choiceExit == ConsoleKey.H)
+                                {
+                                    validExit = true;
+                                }
+                            }
+                        }
+                        running = false;
+                        break;
+                    default:
+                        if (!char.IsControl(keyInfo.KeyChar))
+                        {
+                            buffer.ClearSearch();
+                            if (cursor.IsSelecting) buffer.DeleteSelection(cursor);
+
+                            int viewWidth = Console.WindowWidth - 7; // LineNumberWidth(4) + " | "(3)
+                            if (cursor.X >= viewWidth)
+                            {
+                                buffer.NewLine(cursor.X, cursor.Y);
+                                cursor.X = 0;
+                                cursor.Y++;
+                            }
+                            buffer.InsertChar(cursor.X, cursor.Y, keyInfo.KeyChar);
+                            cursor.X++;
+                        }
+                        break;
+                }
+            }
+
+            renderer.Render(buffer, cursor);
+        }
+    }
+
+    static string? ReadLineWithEsc()
+    {
+        StringBuilder sb = new StringBuilder();
+        int startX = Console.CursorLeft;
+        int startY = Console.CursorTop;
+
+        while (true)
+        {
+            var key = Console.ReadKey(true);
+            if (key.Key == ConsoleKey.Enter)
+            {
+                Console.WriteLine();
+                return sb.ToString();
+            }
+            if (key.Key == ConsoleKey.Escape)
+            {
+                return null;
+            }
+            if (key.Key == ConsoleKey.Backspace)
+            {
+                if (sb.Length > 0)
+                {
+                    sb.Remove(sb.Length - 1, 1);
+                    Console.SetCursorPosition(Console.CursorLeft - 1, Console.CursorTop);
+                    Console.Write(" ");
+                    Console.SetCursorPosition(Console.CursorLeft - 1, Console.CursorTop);
+                }
+            }
+            else if (!char.IsControl(key.KeyChar))
+            {
+                sb.Append(key.KeyChar);
+                Console.Write(key.KeyChar);
+            }
+        }
+    }
+
+    static void ShowStatus(string message)
+    {
+        Console.SetCursorPosition(0, Console.WindowHeight - 1);
+        Console.Write(new string(' ', Console.WindowWidth - 1));
+        Console.SetCursorPosition(0, Console.WindowHeight - 1);
+        Console.Write(message + " (Bir tuşa basın)");
+        Console.ReadKey(true);
+    }
+}
+
+using System.Text;
+
+namespace MiniNotepad.Core;
+
+public class EditorCursor
+{
+    public int X { get; set; } = 0;
+    public int Y { get; set; } = 0;
+
+    public int SelectionStartX { get; set; } = -1;
+    public int SelectionStartY { get; set; } = -1;
+    public bool IsSelecting => SelectionStartX != -1 && SelectionStartY != -1;
+
+    public void StartSelection()
+    {
+        if (!IsSelecting)
+        {
+            SelectionStartX = X;
+            SelectionStartY = Y;
+        }
+    }
+
+    public void ClearSelection()
+    {
+        SelectionStartX = -1;
+        SelectionStartY = -1;
+    }
+
+    public bool IsInsideSelection(int x, int y)
+    {
+        if (!IsSelecting) return false;
+
+        int startY = SelectionStartY;
+        int startX = SelectionStartX;
+        int endY = Y;
+        int endX = X;
+
+        // Swap start and end if needed to make startY <= endY
+        if (startY > endY || (startY == endY && startX > endX))
+        {
+            int tempY = startY;
+            startY = endY;
+            endY = tempY;
+
+            int tempX = startX;
+            startX = endX;
+            endX = tempX;
+        }
+
+        if (y < startY || y > endY) return false;
+        if (y > startY && y < endY) return true;
+        if (startY == endY) return x >= startX && x < endX;
+        if (y == startY) return x >= startX;
+        if (y == endY) return x < endX;
+
+        return false;
+    }
+
+    public void Move(int dx, int dy, List<StringBuilder> lines)
+    {
+        if (dx != 0)
+        {
+            X += dx;
+            if (X < 0)
+            {
+                if (Y > 0)
+                {
+                    Y--;
+                    X = lines[Y].Length;
+                }
+                else
+                {
+                    X = 0;
+                }
+            }
+            else if (X > lines[Y].Length)
+            {
+                if (Y < lines.Count - 1)
+                {
+                    Y++;
+                    X = 0;
+                }
+                else
+                {
+                    X = lines[Y].Length;
+                }
+            }
+        }
+
+        if (dy != 0)
+        {
+            Y = Math.Clamp(Y + dy, 0, lines.Count - 1);
+            X = Math.Min(X, lines[Y].Length);
+        }
+    }
+
+    public void MoveToPreviousWord(List<StringBuilder> lines)
+    {
+        if (X == 0 && Y == 0) return;
+
+        if (X == 0)
+        {
+            Y--;
+            X = lines[Y].Length;
+            return;
+        }
+
+        string line = lines[Y].ToString();
+        int newX = X;
+
+        // 1. Skip whitespace
+        while (newX > 0 && char.IsWhiteSpace(line[newX - 1]))
+        {
+            newX--;
+        }
+        // 2. Skip non-whitespace
+        while (newX > 0 && !char.IsWhiteSpace(line[newX - 1]))
+        {
+            newX--;
+        }
+        X = newX;
+    }
+
+    public void MoveToNextWord(List<StringBuilder> lines)
+    {
+        if (Y == lines.Count - 1 && X == lines[Y].Length) return;
+
+        string line = lines[Y].ToString();
+        if (X >= line.Length)
+        {
+            Y++;
+            X = 0;
+            return;
+        }
+
+        int newX = X;
+        // 1. Skip current non-whitespace
+        while (newX < line.Length && !char.IsWhiteSpace(line[newX]))
+        {
+            newX++;
+        }
+        // 2. Skip whitespace
+        while (newX < line.Length && char.IsWhiteSpace(line[newX]))
+        {
+            newX++;
+        }
+        X = newX;
+    }
+}
+
+using System.Text;
+using MiniNotepad.Utils;
+
+namespace MiniNotepad.Core;
+
+public class EditorBuffer
+{
+    public List<StringBuilder> Lines { get; private set; } = new() { new StringBuilder() };
+    public bool IsModified { get; set; } = false;
+    public string? CurrentFilePath { get; set; }
+    
+    public UndoManager UndoManager { get; } = new();
+
+    // Search results management
+    public List<SearchMatch> Matches { get; private set; } = new();
+    public int CurrentMatchIndex { get; set; } = -1;
+    public string? SearchTerm { get; set; }
+
+    public void Load(IEnumerable<string> content, string? path)
+    {
+        Lines.Clear();
+        foreach (var line in content)
+        {
+            Lines.Add(new StringBuilder(line));
+        }
+        if (Lines.Count == 0) Lines.Add(new StringBuilder());
+        CurrentFilePath = path;
+        IsModified = false;
+        ClearSearch();
+    }
+
+    public void ClearSearch()
+    {
+        Matches.Clear();
+        CurrentMatchIndex = -1;
+        SearchTerm = null;
+    }
+
+    public void UpdateSearch(string term, bool wholeWord = false)
+    {
+        SearchTerm = term;
+        Matches = SearchAlgorithms.FindAll(Lines, term, wholeWord);
+        if (Matches.Count > 0) CurrentMatchIndex = 0;
+        else CurrentMatchIndex = -1;
+    }
+
+    public void ReplaceAll(string oldText, string newText)
+    {
+        if (string.IsNullOrEmpty(oldText)) return;
+
+        var previousState = GetLines();
+        bool replaced = false;
+
+        for (int i = 0; i < Lines.Count; i++)
+        {
+            string line = Lines[i].ToString();
+            string pattern = @"\b" + System.Text.RegularExpressions.Regex.Escape(oldText) + @"\b";
+            if (System.Text.RegularExpressions.Regex.IsMatch(line, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            {
+                // Case-insensitive whole word replacement
+                string replacedLine = System.Text.RegularExpressions.Regex.Replace(
+                    line, 
+                    pattern, 
+                    newText, 
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                );
+                
+                if (line != replacedLine)
+                {
+                    Lines[i] = new StringBuilder(replacedLine);
+                    replaced = true;
+                }
+            }
+        }
+
+        if (replaced)
+        {
+            UndoManager.PushAction(0, 0, null, ActionType.ReplaceAll, previousState);
+            IsModified = true;
+            ClearSearch();
+        }
+    }
+
+    public List<string> GetLines()
+    {
+        return Lines.Select(sb => sb.ToString()).ToList();
+    }
+
+    public string GetSelectedText(EditorCursor cursor)
+    {
+        if (!cursor.IsSelecting) return "";
+
+        int startY = cursor.SelectionStartY;
+        int startX = cursor.SelectionStartX;
+        int endY = cursor.Y;
+        int endX = cursor.X;
+
+        if (startY > endY || (startY == endY && startX > endX))
+        {
+            (startY, endY) = (endY, startY);
+            (startX, endX) = (endX, startX);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = startY; i <= endY; i++)
+        {
+            string line = Lines[i].ToString();
+            int s = (i == startY) ? startX : 0;
+            int e = (i == endY) ? endX : line.Length;
+            
+            if (e > s)
+            {
+                sb.Append(line.Substring(s, e - s));
+            }
+            if (i < endY)
+            {
+                sb.Append(Environment.NewLine);
+            }
+        }
+        return sb.ToString();
+    }
+
+    public void DeleteSelection(EditorCursor cursor)
+    {
+        if (!cursor.IsSelecting) return;
+
+        var previousState = GetLines();
+        string deletedText = GetSelectedText(cursor);
+
+        int startY = cursor.SelectionStartY;
+        int startX = cursor.SelectionStartX;
+        int endY = cursor.Y;
+        int endX = cursor.X;
+
+        if (startY > endY || (startY == endY && startX > endX))
+        {
+            (startY, endY) = (endY, startY);
+            (startX, endX) = (endX, startX);
+        }
+
+        // Perform deletion
+        if (startY == endY)
+        {
+            Lines[startY].Remove(startX, endX - startX);
+        }
+        else
+        {
+            string firstLineStart = Lines[startY].ToString().Substring(0, startX);
+            string lastLineEnd = Lines[endY].ToString().Substring(endX);
+            
+            Lines[startY] = new StringBuilder(firstLineStart + lastLineEnd);
+            
+            // Remove lines in between and the end line
+            Lines.RemoveRange(startY + 1, endY - startY);
+        }
+
+        UndoManager.PushAction(startX, startY, deletedText, ActionType.DeleteSelection, previousState);
+        cursor.Y = startY;
+        cursor.X = startX;
+        cursor.ClearSelection();
+        IsModified = true;
+        ClearSearch();
+    }
+
+    public void InsertText(EditorCursor cursor, string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+
+        var previousState = GetLines();
+        
+        string[] newLines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+        
+        string currentLine = Lines[cursor.Y].ToString();
+        string leftPart = currentLine.Substring(0, cursor.X);
+        string rightPart = currentLine.Substring(cursor.X);
+
+        if (newLines.Length == 1)
+        {
+            Lines[cursor.Y].Insert(cursor.X, newLines[0]);
+            cursor.X += newLines[0].Length;
+        }
+        else
+        {
+            Lines[cursor.Y] = new StringBuilder(leftPart + newLines[0]);
+            for (int i = 1; i < newLines.Length - 1; i++)
+            {
+                Lines.Insert(cursor.Y + i, new StringBuilder(newLines[i]));
+            }
+            string lastPart = newLines[newLines.Length - 1] + rightPart;
+            Lines.Insert(cursor.Y + newLines.Length - 1, new StringBuilder(lastPart));
+            
+            cursor.Y += newLines.Length - 1;
+            cursor.X = newLines[newLines.Length - 1].Length;
+        }
+
+        UndoManager.PushAction(cursor.X, cursor.Y, text, ActionType.Paste, previousState);
+        IsModified = true;
+        ClearSearch();
+    }
+
+    public void Clear()
+    {
+        Lines.Clear();
+        Lines.Add(new StringBuilder());
+        CurrentFilePath = null;
+        IsModified = false;
+        ClearSearch();
+    }
+
+    public void InsertChar(int x, int y, char c)
+    {
+        Lines[y].Insert(x, c);
+        UndoManager.PushAction(x, y, c.ToString(), ActionType.InsertChar);
+        IsModified = true;
+        ClearSearch();
+    }
+
+    public void DeleteChar(int x, int y)
+    {
+        if (x > 0)
+        {
+            char c = Lines[y][x - 1];
+            Lines[y].Remove(x - 1, 1);
+            UndoManager.PushAction(x - 1, y, c.ToString(), ActionType.DeleteChar);
+            IsModified = true;
+        }
+        else if (y > 0)
+        {
+            // Backspace at start of line: merge with previous line
+            var currentLine = Lines[y].ToString();
+            var prevLineLength = Lines[y - 1].Length;
+            Lines[y - 1].Append(currentLine);
+            Lines.RemoveAt(y);
+            UndoManager.PushAction(prevLineLength, y - 1, null, ActionType.MergeLines);
+            IsModified = true;
+        }
+        ClearSearch();
+    }
+
+    public void DeleteForward(int x, int y)
+    {
+        if (x < Lines[y].Length)
+        {
+            char c = Lines[y][x];
+            Lines[y].Remove(x, 1);
+            UndoManager.PushAction(x, y, c.ToString(), ActionType.DeleteChar);
+            IsModified = true;
+        }
+        else if (y < Lines.Count - 1)
+        {
+            // Delete at end of line: merge with next line
+            var nextLine = Lines[y + 1].ToString();
+            Lines[y].Append(nextLine);
+            Lines.RemoveAt(y + 1);
+            UndoManager.PushAction(x, y, null, ActionType.MergeLines);
+            IsModified = true;
+        }
+        ClearSearch();
+    }
+
+    public void DeleteWord(EditorCursor cursor)
+    {
+        if (cursor.X == 0)
+        {
+            if (cursor.Y > 0)
+            {
+                int oldX = cursor.X;
+                int oldY = cursor.Y;
+                // Move cursor to end of previous line
+                cursor.Y--;
+                cursor.X = Lines[cursor.Y].Length;
+                DeleteChar(oldX, oldY);
+            }
+            return;
+        }
+
+        int endX = cursor.X;
+        int startX = cursor.X;
+        string line = Lines[cursor.Y].ToString();
+
+        // 1. Skip trailing whitespace
+        while (startX > 0 && char.IsWhiteSpace(line[startX - 1]))
+        {
+            startX--;
+        }
+        // 2. Skip the word (contiguous non-whitespace)
+        while (startX > 0 && !char.IsWhiteSpace(line[startX - 1]))
+        {
+            startX--;
+        }
+        
+        if (startX == endX && endX > 0)
+        {
+             startX = endX - 1;
+        }
+
+        string deletedText = line.Substring(startX, endX - startX);
+        Lines[cursor.Y].Remove(startX, endX - startX);
+        UndoManager.PushAction(startX, cursor.Y, deletedText, ActionType.DeleteWord);
+        cursor.X = startX;
+        IsModified = true;
+        ClearSearch();
+    }
+
+    public void NewLine(int x, int y)
+    {
+        var currentLine = Lines[y].ToString();
+        var leftPart = currentLine.Substring(0, x);
+        var rightPart = currentLine.Substring(x);
+
+        Lines[y] = new StringBuilder(leftPart);
+        Lines.Insert(y + 1, new StringBuilder(rightPart));
+        UndoManager.PushAction(x, y, null, ActionType.SplitLine);
+        IsModified = true;
+        ClearSearch();
+    }
+
+    public void Undo(EditorCursor cursor)
+    {
+        var action = UndoManager.PopAction();
+        if (action == null) return;
+
+        switch (action.Type)
+        {
+            case ActionType.InsertChar:
+                Lines[action.Y].Remove(action.X, action.Text!.Length);
+                cursor.X = action.X;
+                cursor.Y = action.Y;
+                break;
+            case ActionType.DeleteChar:
+            case ActionType.DeleteWord:
+                Lines[action.Y].Insert(action.X, action.Text!);
+                cursor.X = action.X + action.Text!.Length;
+                cursor.Y = action.Y;
+                break;
+            case ActionType.SplitLine:
+                // Undo split line: merge line Y and Y+1
+                var lineToMerge = Lines[action.Y + 1].ToString();
+                Lines[action.Y].Append(lineToMerge);
+                Lines.RemoveAt(action.Y + 1);
+                cursor.X = action.X;
+                cursor.Y = action.Y;
+                break;
+            case ActionType.MergeLines:
+                // Undo merge lines: split line Y at X
+                var lineToSplit = Lines[action.Y].ToString();
+                var left = lineToSplit.Substring(0, action.X);
+                var right = lineToSplit.Substring(action.X);
+                Lines[action.Y] = new StringBuilder(left);
+                Lines.Insert(action.Y + 1, new StringBuilder(right));
+                cursor.X = action.X;
+                cursor.Y = action.Y;
+                break;
+            case ActionType.ReplaceAll:
+            case ActionType.Paste:
+            case ActionType.DeleteSelection:
+                if (action.PreviousState != null)
+                {
+                    Lines.Clear();
+                    foreach (var line in action.PreviousState)
+                    {
+                        Lines.Add(new StringBuilder(line));
+                    }
+                    cursor.X = action.X;
+                    cursor.Y = action.Y;
+                }
+                break;
+        }
+        IsModified = true;
+        ClearSearch();
+    }
+}
+
+namespace MiniNotepad.Core;
+
+public enum ActionType { InsertChar, DeleteChar, SplitLine, MergeLines, DeleteWord, ReplaceAll, Paste, DeleteSelection }
+
+public record EditorAction(int X, int Y, string? Text, ActionType Type, List<string>? PreviousState = null);
+
+public class UndoManager
+{
+    private readonly Stack<EditorAction> _undoStack = new();
+
+    public void PushAction(int x, int y, string? text, ActionType type, List<string>? previousState = null)
+    {
+        _undoStack.Push(new EditorAction(x, y, text, type, previousState));
+    }
+
+    public EditorAction? PopAction()
+    {
+        return _undoStack.Count > 0 ? _undoStack.Pop() : null;
+    }
+
+    public void Clear()
+    {
+        _undoStack.Clear();
+    }
+}
+
+using System.Text;
+
+namespace MiniNotepad.IO;
+
+public static class FileExplorer
+{
+    private static readonly char[] IllegalChars = { '<', '>', ':', '"', '/', '\\', '|', '?', '*' };
+
+    public static string[] Open(string path)
+    {
+        if (Directory.Exists(path))
+            throw new IOException("Belirtilen yol bir klasördür, dosya değil.");
+            
+        if (!File.Exists(path))
+            throw new FileNotFoundException("Dosya bulunamadı.", path);
+
+        return File.ReadAllLines(path);
+    }
+
+    public static void Save(string path, IEnumerable<string> content)
+    {
+        if (Directory.Exists(path))
+            throw new IOException("Belirtilen yol bir klasördür, dosya değil.");
+
+        // Dosya adı geçerliliğini kontrol et
+        string? fileName = Path.GetFileName(path);
+        if (!string.IsNullOrEmpty(fileName) && fileName.Any(c => IllegalChars.Contains(c)))
+        {
+             // Drive letter check (e.g. C:) - on Windows Path.GetFileName might return it if it's just 'C:'
+             if (!(path.Length == 2 && path[1] == ':'))
+                throw new IOException("Dosya adı geçersiz karakterler içeriyor.");
+        }
+
+        File.WriteAllLines(path, content);
+    }
+
+    public static string? Explore(string title, string? initialPath = null, string? defaultFileName = null)
+    {
+        string currentDir = "";
+        bool showingDrives = false;
+        
+        if (string.IsNullOrWhiteSpace(initialPath))
+        {
+            currentDir = Directory.GetCurrentDirectory();
+        }
+        else if (File.Exists(initialPath))
+        {
+            currentDir = Path.GetDirectoryName(initialPath) ?? Directory.GetCurrentDirectory();
+        }
+        else if (Directory.Exists(initialPath))
+        {
+            currentDir = Path.GetFullPath(initialPath);
+        }
+        else
+        {
+            currentDir = Directory.GetCurrentDirectory();
+        }
+
+        StringBuilder inputBuffer = new StringBuilder(defaultFileName ?? "");
+        int scrollOffset = 0;
+        int selectedIndex = 0;
+
+        while (true)
+        {
+            int maxLines = Console.WindowHeight - 10;
+            Console.Clear();
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"=== {title.ToUpper()} ===");
+            Console.ResetColor();
+            
+            if (showingDrives)
+                Console.WriteLine("Mevcut Dizin: Sürücü Seçimi");
+            else
+                Console.WriteLine($"Mevcut Dizin: {currentDir}");
+                
+            Console.WriteLine(new string('-', Console.WindowWidth));
+
+            List<FileSystemInfo> entries = new List<FileSystemInfo>();
+            List<DriveInfo> drives = new List<DriveInfo>();
+
+            if (showingDrives)
+            {
+                drives.AddRange(DriveInfo.GetDrives().Where(d => d.IsReady));
+            }
+            else
+            {
+                try
+                {
+                    var dirInfo = new DirectoryInfo(currentDir);
+                    entries.AddRange(dirInfo.GetDirectories().OrderBy(d => d.Name));
+                    entries.AddRange(dirInfo.GetFiles().OrderBy(f => f.Name));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Hata: {ex.Message}");
+                }
+            }
+
+            int totalCount = showingDrives ? drives.Count : entries.Count;
+
+            if (totalCount == 0 && !showingDrives)
+            {
+                Console.WriteLine(" (Dizin boş) ");
+            }
+            else
+            {
+                // selectedIndex sınırlarını koru
+                if (selectedIndex < 0) selectedIndex = 0;
+                if (totalCount > 0 && selectedIndex >= totalCount) selectedIndex = totalCount - 1;
+
+                // Scroll ayarı
+                if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
+                if (selectedIndex >= scrollOffset + maxLines) scrollOffset = selectedIndex - maxLines + 1;
+
+                for (int i = scrollOffset; i < Math.Min(scrollOffset + maxLines, totalCount); i++)
+                {
+                    if (i == selectedIndex)
+                    {
+                        Console.BackgroundColor = ConsoleColor.Gray;
+                        Console.ForegroundColor = ConsoleColor.Black;
+                        Console.Write(" > ");
+                    }
+                    else
+                    {
+                        Console.Write("   ");
+                    }
+
+                    if (showingDrives)
+                    {
+                        Console.WriteLine($"[Sürücü] {drives[i].Name} ({drives[i].VolumeLabel})");
+                    }
+                    else
+                    {
+                        string type = entries[i] is DirectoryInfo ? "[Klasör]" : "[Dosya] ";
+                        Console.WriteLine($"{type} {entries[i].Name}");
+                    }
+                    Console.ResetColor();
+                }
+            }
+
+            Console.SetCursorPosition(0, Console.WindowHeight - 4);
+            Console.WriteLine(new string('-', Console.WindowWidth));
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine("Kısayollar: [OKLAR] Gezin/İleri/Geri | [ENTER] Seç/Onayla | [ESC] İptal");
+            Console.ResetColor();
+            Console.Write($"> Dosya Adı (veya seçim yapın): {inputBuffer}");
+
+            var keyInfo = Console.ReadKey(true);
+
+            if (keyInfo.Key == ConsoleKey.Enter)
+            {
+                string input = inputBuffer.ToString().Trim();
+                
+                // Eğer isim yazılmamışsa ama bir şey seçiliyse
+                if (string.IsNullOrEmpty(input))
+                {
+                    if (showingDrives && drives.Count > 0)
+                    {
+                        currentDir = drives[selectedIndex].Name;
+                        showingDrives = false;
+                        selectedIndex = 0;
+                        scrollOffset = 0;
+                        continue;
+                    }
+                    else if (entries.Count > 0)
+                    {
+                        var selected = entries[selectedIndex];
+                        if (selected is DirectoryInfo)
+                        {
+                            currentDir = selected.FullName;
+                            selectedIndex = 0;
+                            scrollOffset = 0;
+                            inputBuffer.Clear();
+                            continue;
+                        }
+                        else
+                        {
+                            return selected.FullName;
+                        }
+                    }
+                }
+                
+                if (!string.IsNullOrEmpty(input))
+                {
+                    // absolute path check
+                    string fullPath;
+                    if (Path.IsPathRooted(input))
+                    {
+                        fullPath = input;
+                    }
+                    else
+                    {
+                        fullPath = Path.Combine(currentDir, input);
+                    }
+
+                    if (Directory.Exists(fullPath))
+                    {
+                        currentDir = fullPath;
+                        inputBuffer.Clear();
+                        selectedIndex = 0;
+                        scrollOffset = 0;
+                        showingDrives = false;
+                    }
+                    else
+                    {
+                        // Geçersiz karakter kontrolü (sadece dosya kısmı için)
+                        string? fName = Path.GetFileName(fullPath);
+                        if (!string.IsNullOrEmpty(fName) && fName.Any(c => IllegalChars.Contains(c)))
+                        {
+                            // ignore for now or show error?
+                            continue; 
+                        }
+                        return fullPath;
+                    }
+                }
+            }
+            else if (keyInfo.Key == ConsoleKey.UpArrow)
+            {
+                if (selectedIndex > 0) selectedIndex--;
+            }
+            else if (keyInfo.Key == ConsoleKey.DownArrow)
+            {
+                if (selectedIndex < totalCount - 1) selectedIndex++;
+            }
+            else if (keyInfo.Key == ConsoleKey.RightArrow) // İleri
+            {
+                if (showingDrives)
+                {
+                    currentDir = drives[selectedIndex].Name;
+                    showingDrives = false;
+                    selectedIndex = 0;
+                    scrollOffset = 0;
+                }
+                else if (entries.Count > 0)
+                {
+                    var selected = entries[selectedIndex];
+                    if (selected is DirectoryInfo)
+                    {
+                        currentDir = selected.FullName;
+                        selectedIndex = 0;
+                        scrollOffset = 0;
+                        inputBuffer.Clear();
+                    }
+                    else if (string.IsNullOrEmpty(inputBuffer.ToString()))
+                    {
+                        inputBuffer.Append(selected.Name);
+                    }
+                }
+            }
+            else if (keyInfo.Key == ConsoleKey.LeftArrow) // Geri
+            {
+                if (showingDrives) continue;
+
+                var parent = Directory.GetParent(currentDir);
+                if (parent != null)
+                {
+                    currentDir = parent.FullName;
+                    selectedIndex = 0;
+                    scrollOffset = 0;
+                }
+                else
+                {
+                    // Root'dayız, sürücüleri göster
+                    showingDrives = true;
+                    selectedIndex = 0;
+                    scrollOffset = 0;
+                }
+            }
+            else if (keyInfo.Key == ConsoleKey.Escape)
+            {
+                return null;
+            }
+            else if (keyInfo.Key == ConsoleKey.Backspace)
+            {
+                if (inputBuffer.Length > 0) inputBuffer.Remove(inputBuffer.Length - 1, 1);
+            }
+            else if (!char.IsControl(keyInfo.KeyChar))
+            {
+                inputBuffer.Append(keyInfo.KeyChar);
+            }
+        }
+    }
+
+    public static string? PromptForPath(string message)
+    {
+        return Explore(message);
+    }
+}
+
+using System.Text;
+using MiniNotepad.Core;
+
+namespace MiniNotepad.UI;
+
+public class Renderer
+{
+    public int ToolboxHeight { get; private set; } = 2;
+    private const int LineNumberWidth = 4;
+    
+    public int ScrollY { get; private set; } = 0;
+    public int ScrollX { get; private set; } = 0;
+
+    public void Render(EditorBuffer buffer, EditorCursor cursor)
+    {
+        // Önce toolbox yüksekliğini hesapla (UpdateScroll için gerekli)
+        CalculateToolboxHeight();
+        UpdateScroll(cursor);
+        
+        // Console.Clear() yerine her satırı manuel temizleyerek yazacağız
+        // Bu, titremeyi (flickering) engeller.
+        RenderToolbox(buffer.CurrentFilePath);
+        RenderBuffer(buffer, cursor);
+        
+        // Durum satırını temizle (En alt satır)
+        Console.SetCursorPosition(0, Console.WindowHeight - 1);
+        Console.Write(new string(' ', Console.WindowWidth));
+        
+        UpdateCursor(cursor);
+    }
+
+    private void UpdateScroll(EditorCursor cursor)
+    {
+        int viewHeight = Console.WindowHeight - ToolboxHeight - 1; // -1 for status line if any
+        int viewWidth = Console.WindowWidth - (LineNumberWidth + 3);
+
+        if (cursor.Y < ScrollY) ScrollY = cursor.Y;
+        if (cursor.Y >= ScrollY + viewHeight) ScrollY = cursor.Y - viewHeight + 1;
+
+        if (cursor.X < ScrollX) ScrollX = cursor.X;
+        if (cursor.X >= ScrollX + viewWidth) ScrollX = cursor.X - viewWidth + 1;
+    }
+
+    private void CalculateToolboxHeight()
+    {
+        int currentX = ("[ Yeni Dosya ] ").Length; 
+        int currentY = 0;
+        var items = Toolbox.GetAllItems();
+        foreach (var item in items)
+        {
+            string s = $"{item.Label}({item.Shortcut}) ";
+            if (currentX + s.Length > Console.WindowWidth)
+            {
+                currentY++;
+                currentX = 0;
+            }
+            currentX += s.Length;
+        }
+        ToolboxHeight = currentY + 1;
+    }
+
+    private void RenderToolbox(string? currentPath)
+    {
+        Console.SetCursorPosition(0, 0);
+        Console.BackgroundColor = ConsoleColor.DarkGray;
+        Console.ForegroundColor = ConsoleColor.White;
+        
+        string fileName = currentPath != null ? Path.GetFileName(currentPath) : "Yeni Dosya";
+        string header = $"[ {fileName} ] ";
+        
+        var items = Toolbox.GetAllItems();
+        int currentX = header.Length;
+        
+        Console.Write(header);
+        
+        foreach (var item in items)
+        {
+            string s = $"{item.Label}({item.Shortcut}) ";
+            if (currentX + s.Length > Console.WindowWidth)
+            {
+                // Satırı boşlukla doldur ki eski içerik kalmasın
+                Console.Write(new string(' ', Math.Max(0, Console.WindowWidth - currentX)));
+                currentY_inc();
+                currentX = 0;
+            }
+            Console.Write(s);
+            currentX += s.Length;
+        }
+        
+        Console.Write(new string(' ', Math.Max(0, Console.WindowWidth - currentX)));
+        Console.ResetColor();
+
+        void currentY_inc() { /* Helper for newline in toolbox */ }
+    }
+
+    private void RenderBuffer(EditorBuffer buffer, EditorCursor cursor)
+    {
+        int viewHeight = Console.WindowHeight - ToolboxHeight - 1; // Durum satırı için -1
+        int viewWidth = Console.WindowWidth - (LineNumberWidth + 3);
+        
+        for (int i = 0; i < viewHeight; i++)
+        {
+            int lineIdx = i + ScrollY;
+            Console.SetCursorPosition(0, ToolboxHeight + i);
+
+            if (lineIdx < buffer.Lines.Count)
+            {
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.Write($"{lineIdx + 1,3} | "); // Satır numarası
+                Console.ResetColor();
+                
+                string line = buffer.Lines[lineIdx].ToString();
+                var lineMatches = buffer.Matches.Where(m => m.LineIndex == lineIdx).ToList();
+
+                // Satırı karakter karakter değil, stil değiştikçe blok blok yazalım
+                StringBuilder lineBuilder = new StringBuilder();
+                ConsoleColor currentBg = ConsoleColor.Black;
+                ConsoleColor currentFg = ConsoleColor.Gray;
+
+                for (int x = 0; x < viewWidth; x++)
+                {
+                    int bufferX = x + ScrollX;
+                    ConsoleColor bg = ConsoleColor.Black;
+                    ConsoleColor fg = ConsoleColor.Gray;
+
+                    bool isMatch = false;
+                    bool isCurrentMatch = false;
+
+                    if (bufferX < line.Length)
+                    {
+                        foreach (var m in lineMatches)
+                        {
+                            if (bufferX >= m.ColumnIndex && bufferX < m.ColumnIndex + m.Length)
+                            {
+                                isMatch = true;
+                                if (buffer.Matches.IndexOf(m) == buffer.CurrentMatchIndex)
+                                    isCurrentMatch = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (cursor.IsInsideSelection(bufferX, lineIdx))
+                    {
+                        bg = ConsoleColor.Yellow;
+                        fg = ConsoleColor.Black;
+                    }
+                    else if (isCurrentMatch)
+                    {
+                        bg = ConsoleColor.DarkBlue;
+                        fg = ConsoleColor.White;
+                    }
+                    else if (isMatch)
+                    {
+                        bg = ConsoleColor.Blue;
+                        fg = ConsoleColor.White;
+                    }
+
+                    if (bg != currentBg || fg != currentFg)
+                    {
+                        if (lineBuilder.Length > 0)
+                        {
+                            Console.BackgroundColor = currentBg;
+                            Console.ForegroundColor = currentFg;
+                            Console.Write(lineBuilder.ToString());
+                            lineBuilder.Clear();
+                        }
+                        currentBg = bg;
+                        currentFg = fg;
+                    }
+
+                    if (bufferX < line.Length)
+                        lineBuilder.Append(line[bufferX]);
+                    else
+                        lineBuilder.Append(' ');
+                }
+
+                if (lineBuilder.Length > 0)
+                {
+                    Console.BackgroundColor = currentBg;
+                    Console.ForegroundColor = currentFg;
+                    Console.Write(lineBuilder.ToString());
+                }
+            }
+            else
+            {
+                // Boş satırları temizle
+                Console.Write(new string(' ', Console.WindowWidth));
+            }
+            Console.ResetColor();
+        }
+    }
+
+    public void UpdateCursor(EditorCursor cursor)
+    {
+        int screenX = cursor.X - ScrollX + LineNumberWidth + 2;
+        int screenY = cursor.Y - ScrollY + ToolboxHeight;
+        
+        if (screenX >= 0 && screenX < Console.WindowWidth && screenY >= 0 && screenY < Console.WindowHeight)
+        {
+            Console.SetCursorPosition(screenX, screenY);
+        }
+    }
+}
+
+namespace MiniNotepad.UI;
+
+public record ToolboxItem(string Label, string Shortcut);
+
+public static class Toolbox
+{
+    public static readonly List<ToolboxItem> FileItems = new()
+    {
+        new ToolboxItem("Aç", "CTRL+O"),
+        new ToolboxItem("Kaydet", "CTRL+S/T"),
+        new ToolboxItem("Farklı Kaydet", "CTRL+A"),
+    };
+
+    public static readonly List<ToolboxItem> EditItems = new()
+    {
+        new ToolboxItem("Bul", "CTRL+F"),
+        new ToolboxItem("Eşleşme Bulucu", "CTRL+G"),
+        new ToolboxItem("Değiştir", "CTRL+R"),
+        new ToolboxItem("Geri Al", "CTRL+Z"),
+        new ToolboxItem("Kopyala", "CTRL+C"),
+        new ToolboxItem("Kes", "CTRL+X"),
+        new ToolboxItem("Yapıştır", "CTRL+V"),
+    };
+    
+    public static List<ToolboxItem> GetAllItems()
+    {
+        var all = new List<ToolboxItem>();
+        all.AddRange(FileItems);
+        all.AddRange(EditItems);
+        return all;
+    }
+}
+
+using System.Text;
+
+namespace MiniNotepad.Utils;
+
+public struct SearchMatch
+{
+    public int LineIndex { get; set; }
+    public int ColumnIndex { get; set; }
+    public int Length { get; set; }
+
+    public SearchMatch(int lineIndex, int columnIndex, int length)
+    {
+        LineIndex = lineIndex;
+        ColumnIndex = columnIndex;
+        Length = length;
+    }
+}
+
+public static class SearchAlgorithms
+{
+    public static List<SearchMatch> FindAll(List<StringBuilder> lines, string searchTerm, bool wholeWord = false)
+    {
+        var matches = new List<SearchMatch>();
+        if (string.IsNullOrEmpty(searchTerm)) return matches;
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            string line = lines[i].ToString();
+            string pattern = System.Text.RegularExpressions.Regex.Escape(searchTerm);
+            if (wholeWord)
+            {
+                pattern = @"\b" + pattern + @"\b";
+            }
+            
+            var matchesInLine = System.Text.RegularExpressions.Regex.Matches(
+                line, 
+                pattern, 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            );
+
+            foreach (System.Text.RegularExpressions.Match match in matchesInLine)
+            {
+                matches.Add(new SearchMatch(i, match.Index, match.Length));
+            }
+        }
+        return matches;
+    }
+}
+
