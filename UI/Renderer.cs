@@ -21,6 +21,11 @@ public class Renderer
         // Bu, titremeyi (flickering) engeller.
         RenderToolbox(buffer.CurrentFilePath);
         RenderBuffer(buffer, cursor);
+        
+        // Durum satırını temizle (En alt satır)
+        Console.SetCursorPosition(0, Console.WindowHeight - 1);
+        Console.Write(new string(' ', Console.WindowWidth));
+        
         UpdateCursor(cursor);
     }
 
