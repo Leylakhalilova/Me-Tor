@@ -4,13 +4,14 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An interactive, terminal-based text editor built using C# and .NET 10. Designed with a custom interactive file explorer, multi-level undo/redo operations, custom search & replace algorithms, dynamic text selection, and a responsive status bar. 
+An interactive, terminal-based text editor built using C# and .NET 10. Designed with a custom interactive file explorer, multi-level undo/redo operations, custom search & replace algorithms, dynamic text selection, and a responsive status bar.
 
 C# ve .NET 10 ile geliştirilmiş, tamamen komut satırı (terminal/konsol) üzerinden çalışan etkileşimli bir metin editörüdür. Özel interaktif dosya gezgini, çok seviyeli geri alma/yineleme (undo), özelleştirilmiş arama ve değiştirme algoritmaları, dinamik metin seçimi ve duyarlı bir durum çubuğu ile donatılmıştır.
 
 ---
 
 ## 🌐 Language / Dil
+
 - [English](#-english)
 - [Türkçe](#-türkçe)
 
@@ -19,6 +20,7 @@ C# ve .NET 10 ile geliştirilmiş, tamamen komut satırı (terminal/konsol) üze
 # 🇬🇧 English
 
 ## ✨ Features
+
 - **Interactive File Explorer:** Browse folders, change drives (Windows), open and save files using dedicated keyboard shortcuts without leaving the terminal.
 - **Dynamic Status Bar:** Real-time feedback displaying the current mode (EDIT/SELECT), active filename, modification status (`*`), cursor coordinates (Line/Column), and search match counter (e.g., `[Match: 2/5]`).
 - **Bilingual Confirmation Dialogs:** Save prompt handles both English (`y`/`n`) and Turkish (`e`/`h`) input keys.
@@ -31,6 +33,7 @@ C# ve .NET 10 ile geliştirilmiş, tamamen komut satırı (terminal/konsol) üze
 ---
 
 ## 📁 Repository Structure
+
 ```
 me-tor/ (Root Directory)
 ├── src/
@@ -44,8 +47,6 @@ me-tor/ (Root Directory)
 │   ├── Rapor.tex             # IEEE Format Project Report (LaTeX)
 │   ├── sunum.md              # Presentation Slides Outline
 │   └── *.md                  # Code component details & walkthroughs
-├── scripts/                  # Automated Development Scripts
-│   └── bundle.sh             # Compiles & packages university submission folder
 ├── .gitignore                # Ignored compiler artifacts & local binaries
 ├── README.md                 # Bilingual documentation
 └── sndnd.txt                 # Developer fix logs & bug notes
@@ -56,18 +57,24 @@ me-tor/ (Root Directory)
 ## 💻 Installation & Execution
 
 ### Prerequisites
+
 You need the **.NET 10 SDK** installed on your system.
+
 - [Download .NET 10](https://dotnet.microsoft.com/download)
 
 ---
 
 ### 🍎 macOS / 🐧 Linux
+
 #### 1. Running in Development Mode
+
 ```bash
 # Navigate to the project root and run:
 dotnet run --project src/MiniNotepad
 ```
+
 #### 2. Building/Publishing
+
 ```bash
 # Build debug binary:
 dotnet build src/MiniNotepad
@@ -82,12 +89,17 @@ dotnet publish src/MiniNotepad/MiniNotepad.csproj -c Release -r osx-arm64 --self
 ---
 
 ### 🪟 Windows
+
 #### 1. Running in Development Mode
+
 Open Command Prompt (cmd) or PowerShell in the root directory and run:
+
 ```powershell
 dotnet run --project src/MiniNotepad
 ```
+
 #### 2. Building/Publishing
+
 ```powershell
 # Build debug binary:
 dotnet build src/MiniNotepad
@@ -123,6 +135,7 @@ dotnet publish src/MiniNotepad/MiniNotepad.csproj -c Release -r win-x64 --self-c
 # 🇹🇷 Türkçe
 
 ## ✨ Özellikler
+
 - **İnteraktif Dosya Gezgini:** Terminali kapatmadan klasörler arası geçiş yapın, sürücü değiştirin (Windows), dosyaları açın ve kısayollar yardımıyla kaydedin.
 - **Dinamik Durum Çubuğu:** Aktif çalışma modunu (DÜZENLEME/SEÇİM), aktif dosya adını, kaydedilme durumunu (`*`), imlecin ekran koordinatlarını (Satır/Sütun) ve arama sonuç göstergesini (örn: `[Eşleşme: 2/5]`) anlık takip edin.
 - **İki Dilli Onay Kutuları:** Kaydedilmemiş değişiklik uyarılarında hem Türkçe (`e`/`h`) hem de İngilizce (`y`/`n`) klavye girdilerini tanır.
@@ -135,6 +148,7 @@ dotnet publish src/MiniNotepad/MiniNotepad.csproj -c Release -r win-x64 --self-c
 ---
 
 ## 📁 Proje Klasör Yapısı
+
 ```
 me-tor/ (Kök Dizin)
 ├── src/
@@ -148,8 +162,6 @@ me-tor/ (Kök Dizin)
 │   ├── Rapor.tex             # IEEE Formatında Proje Raporu (LaTeX)
 │   ├── sunum.md              # Sunum Taslağı ve İçerikleri
 │   └── *.md                  # Kod mimarisi açıklama dökümanları
-├── scripts/                  # Otomasyon Araçları
-│   └── bundle.sh             # Derleme ve teslimat paketleme scripti
 ├── .gitignore                # Git dışı bırakılan derleme/çalıştırma çıktıları
 ├── README.md                 # Çift dilli kullanım kılavuzu
 └── sndnd.txt                 # Geliştirici hata/düzeltme notları
@@ -160,18 +172,24 @@ me-tor/ (Kök Dizin)
 ## 💻 Kurulum ve Çalıştırma
 
 ### Gereksinimler
+
 Sisteminizde **.NET 10 SDK** kurulu olmalıdır.
+
 - [.NET 10 SDK İndir](https://dotnet.microsoft.com/download)
 
 ---
 
 ### 🍎 macOS / 🐧 Linux
+
 #### 1. Geliştirme Modunda Çalıştırma
+
 ```bash
 # Proje kök dizininde terminalden şu komutu çalıştırın:
 dotnet run --project src/MiniNotepad
 ```
+
 #### 2. Derleme / Paketleme
+
 ```bash
 # Hata ayıklama sürümünü derle:
 dotnet build src/MiniNotepad
@@ -186,12 +204,17 @@ dotnet publish src/MiniNotepad/MiniNotepad.csproj -c Release -r osx-arm64 --self
 ---
 
 ### 🪟 Windows
+
 #### 1. Geliştirme Modunda Çalıştırma
+
 Proje kök dizininde Komut İstemi (cmd) veya PowerShell açıp şu komutu çalıştırın:
+
 ```powershell
 dotnet run --project src/MiniNotepad
 ```
+
 #### 2. Derleme / Paketleme
+
 ```powershell
 # Hata ayıklama sürümünü derle:
 dotnet build src/MiniNotepad
@@ -223,14 +246,3 @@ dotnet publish src/MiniNotepad/MiniNotepad.csproj -c Release -r win-x64 --self-c
 | `ESC` | Programdan Çıkış (Değişiklik varsa kaydetme onayı sorar) |
 
 ---
-
-## 📦 Submission Packaging / Üniversite Teslimi Otomasyonu
-
-University homework submissions typically require a specific folder format (`240201092-240201016`), pre-built self-contained binaries, and a merged code file (`Kodlar.txt`).
-You can automatically generate all of these requirements by running:
-
-Üniversite ödev teslimlerinde istenen öğrenci numaralı klasör yapısını (`240201092-240201016`), bağımsız çalışabilen Linux/Windows binary'lerini ve birleştirilmiş kaynak kod dosyalarını (`Kodlar.txt`) tek bir komutla oluşturabilirsiniz:
-
-```bash
-./scripts/bundle.sh
-```
