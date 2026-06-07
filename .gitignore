@@ -8,3 +8,8 @@ obj/
 .vscode/
 .idea/
 .~lock.*
+
+# University submission and release artifacts
+240201092-240201016/
+Release/
+Kodlar.txt
